@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WP Studio
 
-## Getting Started
+A SaaS dashboard for managing one or more WordPress sites — content,
+publishing, analytics, and WordPress integrations from a single place,
+with AI-assisted content generation planned for a later phase. Built as
+a portfolio project demonstrating production-quality full stack
+engineering: Next.js/React frontend, Laravel/MySQL-candidate backend.
 
-First, run the development server:
+Full architecture, stack, and current status: **[`docs/PROJECT.md`](docs/PROJECT.md)**.
+Starting a new working session? Read **[`docs/AI_ENGINEERING_CONTEXT.md`](docs/AI_ENGINEERING_CONTEXT.md)**
+first — it's the reading order for everything else in `docs/`.
+
+## Structure
+
+- `src/` — Next.js 15 / React 19 / TypeScript frontend, feature-first
+  under `src/features/`. See [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md).
+- `backend/` — Laravel 12 API, entirely self-contained. See
+  [`backend/README.md`](backend/README.md) for local setup.
+- `docs/` — architecture decisions (`docs/adr/`), the milestone
+  roadmap, and every other project record. The repository is this
+  project's memory — see `docs/AI_ENGINEERING_CONTEXT.md`.
+
+## Frontend — local setup
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The dashboard
+renders against a mix of real API data and a mock service layer until
+every widget is migrated — see `docs/PROJECT.md`'s Known Limitations.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Other scripts: `npm run typecheck`, `npm run lint`, `npm run build`,
+`npm run format:check`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Backend — local setup
 
-## Learn More
+See [`backend/README.md`](backend/README.md) — SQLite, zero external
+services required.
 
-To learn more about Next.js, take a look at the following resources:
+## Status
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Milestone 7 (Domain & Data Platform) complete. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next and
+[`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) for exactly where
+the project stands right now.

@@ -1,5 +1,80 @@
 # Devlog
 
+## 2026-07-13 — Post-M7 Engineering Review & Platform Modernization
+
+Not a numbered milestone — a review/process session between Milestone
+7 and Milestone 8, per that session's own brief. No application code
+changed; frontend `typecheck`/`lint`/`build` re-verified clean
+afterward as proof.
+
+**Engineering review.** Read `docs/PROJECT.md`, `docs/ROADMAP.md`,
+`docs/CODING_STANDARDS.md`, `docs/ENGINEERING_JOURNAL.md`,
+`docs/DEVLOG.md`, both new ADRs, and the current repo structure before
+changing anything. Found the project's documentation and self-review
+discipline to be a genuine strength (ADRs with rejected alternatives,
+a living Future Backlog, milestone-report-then-hardening-milestone
+loop). Found one real, previously-undocumented risk: **Milestones 6
+and 7 — the entire `backend/` app, the frontend API-integration layer,
+both new ADRs — had never been committed to git.** `git log` stopped at
+"M3–M5." Flagged in the new `docs/SESSION_HANDOFF.md`, then committed
+as its own milestone-scoped commit separate from this session's own
+documentation work, once confirmed only M6/M7 files were involved.
+
+**Platform modernization — evaluated against what already exists,
+added only what filled a real gap.** `docs/PROJECT.md` (architecture),
+`docs/DEVLOG.md` (changelog), and `docs/ENGINEERING_JOURNAL.md`'s
+Future Backlog (technical debt) already each own one responsibility
+well — deliberately did **not** add a redundant `ARCHITECTURE.md`,
+`RELEASE_NOTES.md`, or `ENGINEERING_DEBT.md` (reasoning recorded in the
+new `docs/AI_ENGINEERING_CONTEXT.md`'s doc map, so it doesn't get
+re-litigated next session). Added exactly three new files, each
+covering a gap nothing else filled:
+- `docs/AI_ENGINEERING_CONTEXT.md` — the onboarding front door this
+  session's own brief had to reconstruct by hand (reading order,
+  doc-responsibility map, standing environment gotchas). Every future
+  session should start here instead.
+- `docs/SESSION_HANDOFF.md` — ephemeral, overwritten every session;
+  the "where do I resume" doc that was genuinely missing, made
+  concrete immediately by using it to flag the uncommitted M6/M7 work
+  above.
+- `docs/prompts/milestone-lifecycle.md` — the twelve-stage process
+  (Architecture Review → ... → Next Milestone) and the production-layer
+  checklist this session's own brief specified, saved as a repository
+  artifact so it governs Milestone 8 onward without being re-typed.
+
+Also replaced the root `README.md`, still Create Next App's default
+boilerplate since Milestone 1 (a Low Priority item named in the
+Engineering Journal's Future Backlog, closed here) — now points to
+`docs/AI_ENGINEERING_CONTEXT.md`, `docs/PROJECT.md`, and
+`backend/README.md` instead of Next.js's own generic getting-started
+text.
+
+**Roadmap refined through Milestone 20.** `docs/ROADMAP.md`'s
+Milestones 1–7 kept verbatim (historical, already accurate), regrouped
+under a new "Release v0.7 — Completed Foundation" heading. Milestones
+8–15 (originally a flat list ending at "15. Production Release")
+expanded and regrouped into four releases — v0.8 (Authentication, API
+Completion & Frontend Migration, WordPress Integration), v0.9
+(Background Jobs & Queues, Storage & Media, GraphQL, AI-Assisted
+Content Generation, Frontend Testing), v0.95 (Performance & Caching,
+Observability, CI/CD & Containerization, Cloud Deployment & Security
+Hardening), v1.0 (Production Release) — ending at Milestone 20. Every
+new milestone description links back to the specific ADR or Future
+Backlog item it closes (e.g. Milestone 8 names the exact N+1 fix
+Milestone 7's self-review already flagged), rather than restating scope
+already recorded elsewhere.
+
+**Validation** — `typecheck`, `lint`, `build` all pass, matching this
+session's own claim of zero application-behavior change. No routes,
+API contracts, or database schema touched. Backend test suite not
+re-run — no backend code changed this session.
+
+**Self-review.** The main residual risk this session leaves behind is
+process, not code: `docs/SESSION_HANDOFF.md` now exists specifically to
+prevent the M6/M7 commit gap from recurring silently, but it only works
+if it's actually kept current — worth checking, not assuming, at the
+start of Milestone 8.
+
 ## 2026-07-13 — Milestone 7: Domain & Data Platform
 
 Establishes the business domain Milestone 6's backend foundation was
