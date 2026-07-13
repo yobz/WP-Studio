@@ -11,13 +11,41 @@ explicit approval.
       Zustand, TanStack Query/Table, React Hook Form, Zod, Recharts),
       theme tokens, Geist/Inter typography, Prettier + Husky +
       lint-staged, VSCode config, `.env.example`, GitHub templates.
-- [ ] **3. Design System** — Base UI primitives (button, input, card,
-      badge, dialog, etc.) built on the Milestone 2 theme foundation.
-- [ ] **4. Application Layout** — Shell, navigation, sidebar, header,
-      responsive layout.
-- [ ] **5. Dashboard UI** — Dashboard feature screens with mock data.
+- [x] **3. Design System** — Core `ui/` primitives (Button, Input,
+      Textarea, Label, Card, Badge, Avatar, Skeleton, Tooltip,
+      Typography) via shadcn CLI + hand-built; `common/` composites
+      (PageHeader, StatCard, StatusBadge, EmptyState, SearchInput);
+      typography scale, iconography conventions, expanded design
+      tokens (selection, scrollbar). Remaining primitives (Dialog,
+      Table, Tabs, Sheet, Accordion, Popover, Dropdown, Toast) added
+      on demand in later milestones, not built speculatively.
+- [x] **3.1. Design System Hardening** — Patch milestone resolving the
+      Milestone 3 report's findings: WCAG AA contrast fixes (tokens
+      only), compile-time `aria-label` enforcement on icon-only
+      `Button`, `data-slot` consistency across every component. See
+      `docs/MILESTONE_REPORT_M3.md`'s update note.
+- [x] **4. Product Shell** — Sidebar (shadcn `sidebar` primitive,
+      hand-integrated to protect Milestone 3.1's hardened components),
+      header (real breadcrumbs, functional theme toggle, placeholder
+      notifications/user menu), configuration-driven navigation
+      (`src/lib/navigation.ts`), `(app)` route group with six
+      placeholder pages, loading/error/404 states, `ProtectedLayout`
+      placeholder ahead of Milestone 8. See `docs/adr/0002-product-shell.md`.
+- [x] **5. Dashboard Experience** — Nine dashboard widgets (Welcome,
+      KPI Cards, Quick Actions, Recent Activity, WordPress Overview,
+      Analytics Preview, Recent Drafts, AI Assistant Preview, System
+      Health) on realistic mock data; dedicated mock service layer
+      (`src/services/mock/`) shaped like a future REST response;
+      TanStack Query for all server state (caching, retry, Loading/
+      Error/Empty/Success across every widget); one Zustand store for
+      genuinely cross-cutting state (notification count). See
+      `docs/adr/0003-dashboard-data-architecture.md`.
 - [ ] **6. State Management** — Zustand stores, Context providers, TanStack
-      Query setup.
+      Query setup. Core infrastructure (query client config, one store,
+      the local-vs-global state pattern) already established in
+      Milestone 5 as dashboard needs required it — remaining work here
+      is expanding both as future feature milestones need them, not
+      building either from scratch.
 - [ ] **7. Laravel REST API** — Laravel 12 backend, MySQL schema, base API
       endpoints.
 - [ ] **8. Authentication** — Auth flow between frontend and Laravel API.
