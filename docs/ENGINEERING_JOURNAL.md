@@ -23,6 +23,15 @@ items are added, resolved, or reprioritized; not a chronological log
   open). Closing the inline-expand mobile search returns focus to
   `document.body` instead of the search-toggle icon button. Real
   keyboard/screen-reader-user regression, not cosmetic.
+- **`SitePolicy`/`PostPolicy` authorization checks are not eager-load
+  safe** (found Milestone 7, by design — see
+  [[0005-domain-model]](adr/0005-domain-model.md)'s Performance
+  section). `hasMember()` runs a query per call; fine for a single
+  `show`/`update` check, a real N+1 the moment Milestone 8 wires
+  `can:view` into a list endpoint without eager-loading
+  `workspace.users` first. Not a bug yet — no route calls it in a loop
+  — but Milestone 8 needs to inherit this awareness, not rediscover it
+  under load.
 
 ### Medium Priority
 
@@ -38,6 +47,25 @@ items are added, resolved, or reprioritized; not a chronological log
   see the error state repeat. Not worth solving for mock data; revisit
   if the real backend needs a similar demo/staging failure-injection
   mode.
+- **Six of nine dashboard widgets remain on the mock service layer**
+  (found Milestone 5; KPI Cards migrated Milestone 6, WordPress
+  Overview migrated Milestone 7 — see
+  [[0005-domain-model]](adr/0005-domain-model.md)). The remaining six
+  (Recent Activity, Analytics Preview, Recent Drafts, System Health,
+  Quick Actions, AI Assistant Preview) migrate the same way, one at a
+  time, as their respective backend domains get real logic.
+- **Sites/Posts index endpoints have no pagination** (found Milestone
+  7, by design — see the ADR's Performance section). Fine at today's
+  seeded volume; a real gap once a workspace has hundreds of posts.
+  Needs a real page-size decision before implementing, not a reflexive
+  default.
+- **Workspace deletion has no dedicated flow** (found Milestone 7, by
+  design). `Workspace::delete()` today hard-deletes and cascades to
+  every site/post — correct as a database constraint, but a real
+  product needs a deliberate tenant-deletion flow (confirmation, data
+  export, grace period) before this is ever exposed through an API
+  endpoint. No such endpoint exists yet, so not urgent — but flagged
+  before one gets added casually.
 
 ### Low Priority
 
@@ -48,6 +76,25 @@ items are added, resolved, or reprioritized; not a chronological log
 - **`components.json`'s `iconLibrary`/style presets are hand-picked
   and undocumented as to why** (found Milestone 4). Low risk, but a
   future contributor changing them wouldn't know what would break.
+- **Root `README.md` is still Create Next App's default boilerplate**
+  (found Milestone 6, noticed while writing `backend/README.md`). Not
+  this milestone's scope to fix, but worth doing before the project is
+  shown to anyone external — a portfolio project's own top-level
+  README being unedited default text undercuts the "production
+  software" framing everywhere else.
+- **Local development runs on SQLite, not a server database** (found
+  Milestone 6, by design — see the ADR's Trade-offs). Fine for this
+  milestone's architecture-only scope; a real deployment target should
+  make (and document) a deliberate MySQL/PostgreSQL choice before
+  Milestone 15 (Production Release), not inherit SQLite by default.
+  **Update, Milestone 7:** confirmed this choice has a real,
+  non-hypothetical cost — SQLite's lack of foreign-key
+  auto-indexing directly caused the two missing-index findings this
+  milestone's self-review caught (see
+  [[0005-domain-model]](adr/0005-domain-model.md)). Worth re-auditing
+  every migration's indexes specifically when a production database
+  choice is finally made, in case MySQL/Postgres-specific behavior cuts
+  the other way on something else.
 
 ### Deferred Priority
 
@@ -57,16 +104,50 @@ items are added, resolved, or reprioritized; not a chronological log
   [[0003-dashboard-data-architecture]](adr/0003-dashboard-data-architecture.md);
   deferred to the milestone that adds AI integration, not tracked as a
   bug.
-- **Mock service layer has no Laravel replacement yet** (by design,
-  Milestone 5). Tracked as the explicit purpose of a future milestone,
-  not backlog debt — see `docs/ROADMAP.md`.
+- **No "AI Jobs" table or model exists** (by design, Milestone 7 —
+  see [[0005-domain-model]](adr/0005-domain-model.md)'s Domain Model
+  section). Deliberately not guessed at without a real AI provider
+  integration to design the schema against — unlike `PublishingJob`,
+  which got built this milestone because its shape is generic and
+  well-understood.
+- **Every backend API route is unauthenticated** (by design, Milestone
+  6 — see [[0004-backend-foundation]](adr/0004-backend-foundation.md)).
+  Milestone 8 (Authentication) adds Sanctum; `config/cors.php`'s
+  `supports_credentials` and the `sanctum/csrf-cookie` CORS path are
+  already prepared for it. **Update, Milestone 7:** `SitePolicy`/
+  `PostPolicy` now contain real, tested authorization logic
+  (`PolicyTest.php`) ready for Milestone 8 to wire in — see the High
+  Priority item above for the one thing that logic needs (eager
+  loading) before it's wired into a list endpoint.
+- **No repository layer in the backend** (by design, Milestones 6–7 —
+  nothing to abstract yet; revisit only if a real second data source
+  or complex query-composition need appears).
+- **No real analytics/events schema** (by design — see
+  [[0005-domain-model]](adr/0005-domain-model.md)). **Update, Milestone
+  7:** partially addressed — `AnalyticsSnapshot` (one row per site per
+  day) now exists and backs a real Dashboard trend calculation, but
+  it's a periodic rollup, not event-level tracking (page views,
+  sessions, referrers). Still tracked as the future Analytics
+  milestone's job; `AnalyticsSnapshot` was designed as a plausible
+  aggregation target for that milestone, not a replacement for it.
+- **Analytics, AI, and Settings API domains are still placeholder
+  endpoints** (Sites and Posts became real CRUD in Milestone 7 — see
+  [[0005-domain-model]](adr/0005-domain-model.md)). Each becomes real
+  in its own future milestone (Analytics, AI, Settings respectively) —
+  see `docs/ROADMAP.md`.
 
 ---
 
 ## Interview Highlights
 
-Five engineering decisions from Milestone 4.1 (Product Shell
-Hardening), written to be talked through directly.
+A living, permanently-maintained collection of engineering decisions
+worth talking through directly in an interview — organized by
+milestone, growing each time a milestone produces a decision worth
+keeping. Older entries aren't pruned as newer ones are added.
+
+### Milestone 4.1 (Product Shell Hardening)
+
+Five engineering decisions, written to be talked through directly.
 
 **1. Nested `<main>` landmarks — a bug static tooling can't see.**
 *Problem:* `DashboardLayout` rendered `<main>` inside `SidebarInset`,
@@ -136,6 +217,367 @@ the right level automatically (e.g. via React Context reporting whether
 a `PageHeader` is an ancestor) — rejected as solving a four-call-site
 problem with infrastructure; an explicit prop is more code to type
 once, but zero magic to debug later.
+
+### Milestone 7 (Domain & Data Platform)
+
+**1. Reasoning through domain ownership before writing a migration.**
+*Problem:* Milestone 6 shipped `sites`/`posts` with no tenant concept
+at all — a flat, ownerless list. *Chosen solution:* designed the full
+entity graph (`Workspace` → `Site`/`AnalyticsSnapshot`;
+`Workspace` ↔ `User` many-to-many with a role) on paper before
+`Schema::create` was written once. *Trade-offs:* slower to first line
+of migration code. *Why this approach:* it's what surfaced the pivot
+table's naming collision (Laravel's alphabetical `user_workspace`
+convention vs. the intended `workspace_user`) as a design question
+answered deliberately, not a runtime error discovered by accident —
+and why two missing indexes (below) got caught in review rather than
+in production.
+
+**2. A denormalized column that became a real historical model.**
+*Problem:* Milestone 6's Dashboard KPI trend was permanently omitted
+— `sites.monthly_visitors` was one mutable number with no history to
+compare against. *Chosen solution:* replaced it with
+`AnalyticsSnapshot` (one row per site per day) and a real 14-day vs.
+14-day period-over-period trend calculation in `DashboardService`.
+*Trade-offs:* a new table and a seeder that now generates 28 days of
+history per site instead of one static number. *Why this approach:*
+this is the smallest schema that makes the trend real without
+pretending to solve full event-level analytics (explicitly a future
+milestone's job) — and it closes a gap flagged in two previous
+milestone reviews, verified live in a browser (the frontend now
+renders "+105.8% vs. prior 14 days," not an omitted field).
+
+**3. Writing and testing authorization logic with nothing to enforce
+it yet.** *Problem:* real `Workspace`/`User` membership now exists,
+but no route has an authenticated user to check it against.
+*Chosen solution:* wrote real `SitePolicy`/`PostPolicy` logic (owner/
+admin/member role checks) and tested it directly against the policy
+classes (`PolicyTest.php`), without adding a single `authorize()` call
+to any controller. *Trade-offs:* the logic sits unused for at least
+one more milestone. *Why this approach:* the alternative — writing the
+policies *and* wiring them in Milestone 8 at the same time auth
+lands — means the first time the logic runs for real is also the
+first time it's tested, under time pressure to ship login. Proving it
+correct now, in isolation, means Milestone 8 wires in already-verified
+logic instead of debugging authorization and authentication
+simultaneously.
+
+**4. Catching a SQLite-specific indexing gap self-review would have
+missed on MySQL.** *Problem:* `sites.workspace_id` and
+`workspace_user.user_id` had foreign key constraints but no
+index. *Chosen solution:* added explicit indexes for both,
+documented why. *Trade-offs:* two extra `$table->index()` calls.
+*Why this matters for an interview answer:* MySQL/InnoDB silently
+indexes a column the moment a foreign key constraint touches it;
+SQLite doesn't. A schema developed and self-reviewed with only MySQL
+experience in mind could ship this gap invisibly — it doesn't error,
+it just does a full table scan, and that's indistinguishable from
+correct at low seed-data volume. Catching it required actively
+reasoning about the *specific* database being used, not pattern-
+matching against general "did I add foreign keys" instinct.
+
+**5. Deliberately not building the AI Jobs table.** *Problem:* the
+milestone brief named "AI Jobs" as a domain concept the platform
+should understand. *Chosen solution:* documented it in the ADR's
+domain model and Future Backlog; built no table, no model. *Trade-
+offs:* "Domain & Data Platform" ships without one of its named
+concepts having any schema at all. *Why this approach:* contrasted
+directly against `PublishingJob`, which *did* get built this same
+milestone — the difference is that "an async operation with a status
+and a timestamp" is a well-understood, generic shape, while "an AI
+job" depends entirely on which provider, which model, and what a
+prompt/response/cost record needs to look like — none of which is
+knowable without a real integration to design against. Building a
+guessed schema now would very likely mean a breaking migration later;
+naming the gap explicitly is more honest than filling it with a
+placeholder that looks more finished than it is.
+
+---
+
+## Resume Highlights
+
+A living, permanently-maintained collection of ATS-friendly resume
+bullets, based only on work actually completed — organized by
+milestone, growing over time. Not exaggerated; every bullet below maps
+to real, shipped, verified work.
+
+### Milestone 7 (Domain & Data Platform)
+
+- Designed and implemented a multi-tenant domain model (Workspace,
+  Site, Post, AnalyticsSnapshot, PublishingJob) in Laravel, including
+  a many-to-many workspace membership system with role-based
+  permissions.
+- Built full CRUD REST APIs for two core resources with centralized
+  validation (Form Requests), authorization policies, and a
+  consistent JSON response envelope, backed by 38 passing Pest tests
+  covering HTTP behavior, model relationships, validation rules, and
+  authorization logic.
+- Replaced a denormalized metrics column with a proper historical
+  snapshot table and implemented real period-over-period trend
+  calculation, closing a product gap (missing KPI trends) flagged
+  across two prior engineering reviews.
+- Identified and fixed a database-engine-specific indexing gap
+  (SQLite does not auto-index foreign key columns, unlike MySQL)
+  during self-review, preventing a silent full-table-scan performance
+  issue before it reached any real data volume.
+- Authored a comprehensive architecture decision record covering
+  entity relationships, indexing strategy, soft-delete policy, and
+  explicitly-deferred schema decisions with documented rationale for
+  each.
+
+---
+
+## 2026-07-13 — Laravel's pivot-table naming convention is alphabetical, not "however you name the migration"
+
+**Problem.** `Workspace::users()` and `User::workspaces()` both called
+plain `belongsToMany()`, and the app crashed on the very first write
+to the relationship: `SQLSTATE[HY000]: General error: 1 no such
+table: user_workspace` — a table that was never created; the actual
+migration created `workspace_user`.
+
+**Investigation.** Laravel's `belongsToMany()` derives a default pivot
+table name by taking both model names, sorting them alphabetically,
+and joining with an underscore — `User` and `Workspace` sort to
+`User`, `Workspace`, giving `user_workspace`. The migration had been
+named `create_workspace_user_table` on the (reasonable-sounding, but
+wrong) assumption that "workspace owns the membership concept, so its
+name goes first" — a naming choice that reads naturally to a human and
+is irrelevant to Eloquent's actual convention.
+
+**Decision.** Rather than rename the migration/table to match the
+convention, passed the table name explicitly to both `belongsToMany()`
+calls: `belongsToMany(User::class, 'workspace_user')` and the reverse.
+`workspace_user` is the more readable name in migration files,
+schema diagrams, and raw SQL — worth the two extra explicit arguments
+rather than bending the schema to match a naming convention.
+
+**Outcome.** Fixed on the first retry once the actual failing query
+(visible in the exception message) was read carefully — the error
+message named the exact table Eloquent was looking for, which is what
+made the mismatch obvious rather than requiring a debugger.
+
+**Lessons learned.** A framework convention that "just works" when you
+follow it by accident stops working the moment your naming instinct
+disagrees with the framework's — and the fix is almost never to fight
+the convention project-wide, it's to be explicit at the two or three
+call sites that need to differ from it.
+
+---
+
+## 2026-07-13 — An off-by-one date range made a passing-looking test wrong
+
+**Problem.** A test asserting `DashboardService`'s new trend
+calculation (100% increase: 1,400 visitors → 2,800) failed with
+`115.4` instead of `100.0` — the *current*-period number was correct,
+only the *previous*-period comparison was off.
+
+**Investigation.** The service defines its two 14-day windows as
+`[today-13, today]` (current) and `[today-27, today-14]` (previous) —
+contiguous, no gap, 28 days total ending today. The test's fixture
+data used `range(15, 28)` for the "previous" window, intending "the 14
+days before the current window" but actually seeding `today-15`
+through `today-28` — offset by exactly one day from what the service
+queries (`today-14` through `today-27`). The result: only 13 of the
+service's 14 expected previous-window days had matching fixture data
+(`today-14` was never seeded; `today-28` was seeded but fell outside
+the service's window entirely) — a real number, just computed from
+incomplete data, which is why the test *ran* successfully and produced
+a plausible-looking (if wrong) result rather than an obvious error.
+
+**Decision.** Fixed the fixture's range to `range(14, 27)`, matching
+the service's actual window boundaries exactly.
+
+**Outcome.** Re-ran: exact expected trend (`100.0`) on the first try
+after the fix, confirming the *service's* math was correct all along —
+the bug was entirely in the test's own fixture construction.
+
+**Lessons learned.** A failing assertion with a plausible-but-wrong
+number (`115.4` instead of `100.0`) is a different, easier-to-fix-in-
+the-wrong-place kind of failure than a crash — it's tempting to adjust
+the *service* to match what the test expected, which would have been
+exactly backwards here (the service was right; the test's date math
+was off by one day). Worth verifying which side of an assertion is
+actually wrong before "fixing" either one.
+
+---
+
+## 2026-07-13 — Closing the four verified M5 findings
+
+Four findings from `docs/MILESTONE_REPORT_M5.md`'s independent review,
+addressed before Milestone 6 (Backend Foundation) began, per that
+report's own recommendation ("approve, fix forward" — none were
+architectural). Each is a separate decision; grouped here since all
+four were resolved in the same pass.
+
+### Restoring a server-safe `<h1>`
+
+**Problem.** `WelcomeSection`'s greeting `<h1>` only rendered once a
+`mounted` guard flipped true — verified in the M5 review to be
+genuinely absent from the production static HTML
+(`.next/server/app/dashboard.html`), not just a dev-mode artifact.
+`page-has-heading-one` failed when `axe-core` was run immediately after
+`DOMContentLoaded`, before the mount effect had run.
+
+**Investigation.** The original `mounted`-guard existed to solve a
+real problem (a build-time-frozen `Date.now()` going stale for later
+visitors, since this route is statically generated) but the *chosen
+mechanism* — swapping the whole `<h1>` element for a `Skeleton` until
+mount — solved that problem by introducing a new one: the page's only
+heading became conditionally absent. The two concerns (avoid a stale
+greeting; always have an `<h1>`) don't actually require the same fix.
+
+**Decision.** Keep the `<h1>` element unconditionally rendered, with a
+static, time-agnostic default (`"Welcome back"`) that's identical on
+the server-rendered HTML and the client's first paint — only the *text
+inside* the already-present heading swaps to the time-aware greeting
+post-mount. This isn't a hydration mismatch (the DOM node and its
+initial text are identical in both renders); it's a normal client-side
+state update after the fact, the same category of change as any other
+`useState` update.
+
+**Outcome.** `.next/server/app/dashboard.html` now contains exactly
+one `<h1>` ("Welcome back") in every static build, verified by
+re-running the same production-artifact grep the M5 review used.
+
+**Lessons learned.** "This value needs client-time evaluation" and
+"this element should exist unconditionally" are two different
+requirements that had been solved with one mechanism (conditional
+rendering) when only the first one actually needed it. Splitting them —
+always render the element, defer only the *value* — is the general
+fix for this shape of problem, not specific to greetings.
+
+### Native `disabled`, not `aria-disabled`, for the workspace selector
+
+**Problem.** `WelcomeSection`'s "My Workspace" placeholder button used
+`aria-disabled="true"` + an `onClick` `preventDefault()` — the pattern
+established in Milestone 4.1 for the sidebar's "Help & Support"
+*link*. The M5 review found it left the button keyboard-focusable
+(confirmed via a live tab-order trace), unlike `QuickActions`' buttons
+(built the same milestone), which correctly used native `disabled` and
+were properly skipped.
+
+**Investigation.** The `aria-disabled` + `preventDefault()` pattern
+exists specifically for elements that *can't* take a native `disabled`
+attribute — links (`<a>`). A plain `<button type="button">` has no
+such restriction, and `preventDefault()` on a button click has no
+default browser action to prevent in the first place (unlike a link's
+navigation, or a `type="submit"` button's form submission) — so it was
+functionally a no-op, not a working guard.
+
+**Decision.** Switched to native `disabled`, matching `QuickActions`'
+own reasoning (documented inline there: "genuinely `disabled`... because
+there is no destination or handler to guard against").
+
+**Outcome.** The button is now correctly excluded from the tab order —
+re-verified via the same keyboard-focus check the M5 review used.
+
+**Lessons learned.** A correct pattern (the two-layer link-disabling
+approach) applied to a superficially similar but structurally
+different element (a button, not a link) stops being correct. Worth
+checking *why* a pattern exists, not just that a fix "worked" before,
+when reusing it somewhere new.
+
+### Removing the dead `getQuickActions()` export
+
+**Problem.** `dashboard.service.ts` exported `getQuickActions()`;
+nothing called it. `QuickActions` read `mockQuickActions` fixture data
+directly, bypassing the service/hook layer every other widget used.
+
+**Decision.** Considered both options the M5 review offered: wire
+`QuickActions` through a `useQuickActions()` hook for consistency with
+its siblings, or delete the unused export. Chose deletion.
+`QuickActions` renders genuinely static content — four disabled
+placeholder cards with no async state, no loading/error/empty
+variation possible. Adding a query hook would convert it from a
+Server Component to a Client Component (`useQuery` requires
+`"use client"`) purely for stylistic uniformity with widgets that
+*do* have real async data — the opposite of `CODING_STANDARDS.md`'s
+"Client Components only when interactivity... require it."
+
+**Outcome.** `getQuickActions()` removed; `QuickActions` unchanged
+(still a Server Component, still reads `mockQuickActions` directly).
+Zero dead exports remain in `dashboard.service.ts` (re-verified via
+grep across `src/` for every exported function name).
+
+**Lessons learned.** "Every widget should look the same" and "every
+widget should use the minimum machinery its actual behavior needs" are
+in tension exactly once in this codebase (`QuickActions`), and they
+point in different directions here — chose the latter, and documented
+why, so the inconsistency reads as a deliberate choice to the next
+person who notices it, not an oversight.
+
+### Wiring the notification store into real (mock) data
+
+**Problem.** `useNotificationStore`'s `setCount` had zero call sites —
+the header's notification badge and "Mark all as read" flow were
+permanently unreachable, despite the store's own doc comment claiming
+"the dashboard's activity query... sets the count once data loads."
+
+**Decision.** Wired it for real: `RecentActivity` now calls
+`setCount(activity.length)` in a `useEffect` whenever its query's
+`data` changes (TanStack Query v5 removed `onSuccess` from `useQuery`,
+so an effect watching `data` is the supported replacement). The
+header's own copy already reads "you have N updates from your
+dashboard activity" — activity count *is* the notification count, no
+new concept needed.
+
+**Outcome.** The badge now reflects real (mock) data on every load;
+"Mark all as read" genuinely clears it. Documented, not hidden: this
+is not real read/unread persistence (there's no backend to remember a
+dismissal), so a later activity refetch resets the count — acceptable
+for a mock-data milestone, called out explicitly in both the store's
+doc comment and the component's.
+
+**Lessons learned.** "Wire it to something real" doesn't have to mean
+inventing new backend-shaped functionality — the simplest honest
+mapping (badge count = activity count, exactly what the copy already
+says) was sufficient and required no new mock data, no new types, and
+no speculation about what a future notifications feature will actually
+need.
+
+---
+
+## 2026-07-13 — A OneDrive-synced project path breaks framework caches, twice now
+
+**Problem.** `php artisan package:discover` (triggered automatically
+by `composer require`) failed: "The `bootstrap/cache` directory must
+be present and writable" — despite the directory visibly existing,
+being writable via plain shell commands (`echo`, `cat`, `rm`), and
+`icacls` showing the current user with full control.
+
+**Investigation.** `icacls` also showed something the "present and
+writable" framing didn't explain: a `DENY` ACL entry for "Delete
+Child" (`DC`) on `Everyone`, and the directory's Windows attributes
+included `ReparsePoint` — a marker OneDrive uses for its
+on-demand/placeholder file sync mechanism, not a plain local
+directory. PHP's own `is_writable()`-style checks (which
+`PackageManifest` uses internally) apparently resolve differently
+against a reparse-point directory than POSIX shell utilities do
+through Git Bash's translation layer — enough of a mismatch that the
+directory was writable by one measure and not by Laravel's.
+
+**Decision.** `rm -rf bootstrap/cache && mkdir bootstrap/cache`
+(recreating the `.gitignore` inside it afterward) — replacing the
+OneDrive-managed placeholder directory with a plain local one.
+
+**Outcome.** Fixed immediately; `package:discover` and every
+subsequent `artisan` command worked normally afterward. Recognized
+this as the *same* fix already documented in this journal's Milestone
+3 entries for `.next`'s `EINVAL: invalid argument, readlink` failure —
+that was resolved identically (`rm -rf .next`), also attributed to
+OneDrive sync interference, also on this exact project path.
+
+**Lessons learned.** One occurrence of a framework-cache directory
+misbehaving on a synced path could be a fluke; two occurrences across
+two unrelated toolchains (Next.js's build cache, Laravel's bootstrap
+cache) on the same path is a pattern, not a coincidence — developing
+this project from `OneDrive\Desktop\wp-studio` carries a standing,
+repeatable risk that any framework's local cache/compiled-artifact
+directory can silently become a OneDrive placeholder and start failing
+writability checks that plain file operations don't reveal. The fix is
+cheap and now documented (`rm -rf <cache-dir>`, recreate), so the next
+occurrence — in whatever toolchain finds it third — should cost a
+lookup here, not a fresh investigation.
 
 ---
 

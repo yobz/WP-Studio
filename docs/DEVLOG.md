@@ -1,5 +1,290 @@
 # Devlog
 
+## 2026-07-13 — Milestone 7: Domain & Data Platform
+
+Establishes the business domain Milestone 6's backend foundation was
+built to eventually carry — a real multi-tenant model, real CRUD, and
+a real historical data source for the Dashboard's trend calculation.
+Full reasoning in `docs/adr/0005-domain-model.md`; this entry is the
+what.
+
+**Domain modeled before any migration was written** (per the
+milestone's own instruction): `Workspace` (tenant root) → `Site` →
+`Post`/`AnalyticsSnapshot`; `Workspace` ↔ `User` many-to-many via
+`workspace_user` (with a `role`: owner/admin/member); `Post` →
+`PublishingJob` (placeholder). "Content," "Publishing," and "AI Jobs"
+are domain *areas*, not separate tables — the first two are `Post`
+and `PublishingJob`; AI Jobs deliberately has no table yet (see
+below).
+
+**Migrations** — `workspaces`, `workspace_user` (new); Milestone 6's
+`sites`/`posts` migrations amended in place (not layered with `ALTER
+TABLE` migrations — neither had ever run outside local development,
+so editing them directly produces an honest schema history rather than
+a trail of patches for a table that was never actually shipped without
+a workspace); `analytics_snapshots`, `publishing_jobs` (new). Every
+relationship is a real `foreignId()->constrained()` with
+`cascadeOnDelete()`. Soft deletes on `Site`/`Post` only — not
+`Workspace` (tenant deletion deserves its own future flow, not a
+bolted-on `deleted_at`), not `AnalyticsSnapshot`/`PublishingJob`
+(immutable/operational records, not content). UUIDs deferred,
+documented why (no external API consumer yet, one database).
+
+**Self-review caught two missing indexes before they shipped** —
+`sites.workspace_id` and `workspace_user.user_id` both had foreign key
+*constraints* but no index. SQLite, unlike MySQL/InnoDB, doesn't
+auto-index a column just because a constraint references it — both
+would have silently full-table-scanned on every workspace-scoped
+lookup and `$user->workspaces` query. Fixed before merge, documented
+in the ADR as a SQLite-specific gotcha worth re-checking on every
+future migration.
+
+**Real CRUD** — `Route::apiResource('sites', ...)` and
+`apiResource('posts', ...)`, full `index`/`show`/`store`/`update`/
+`destroy`, replacing Milestone 6's placeholders. Six new Form Requests
+(`Store`/`Update`/`Index` × Sites/Posts) — `workspace_id`/`site_id`
+deliberately excluded from `Update` requests (moving a resource
+between parents is an ownership-transfer operation, not a plain edit;
+verified a client can't smuggle a different `workspace_id` into a
+`PUT` body and have it take effect). `SiteResource`/`PostResource`
+render through the existing `ApiResponse` envelope — no new response
+logic, same pattern Milestone 6 established. `SiteService::create()`
+dispatches `SiteConnected` for the first time (defined but never
+dispatched in Milestone 6).
+
+**Real authorization logic, deliberately not wired to any route** —
+`SitePolicy`/`PostPolicy` now check real workspace membership/role
+(owner/admin can create/update/delete; any member can view; only
+owner can force-delete/restore) instead of Milestone 6's
+deny-by-default placeholder. Not added to any controller's
+`authorize()` — every route stays open until Milestone 8 gives a
+request an authenticated user. Tested directly against the policy
+classes (`PolicyTest.php`, 3 tests) so the logic is proven correct
+ahead of being load-bearing.
+
+**Real analytics history** — `AnalyticsSnapshot` (site_id,
+snapshot_date, visitors, posts_published, storage_used_mb; unique per
+site per day) replaces the single `sites.monthly_visitors` column.
+`DashboardService::summary()` now computes a genuine 14-day-vs-prior-
+14-day visitor trend (`monthly_visitors_trend`, nullable — `null`
+means "no prior data," not "no change"). Closes a gap the Milestone 5
+and 6 reviews both flagged (KPI trend permanently omitted). The
+frontend's `map-summary-to-kpis.ts` now renders it — verified live:
+"+105.8% vs. prior 14 days" on the Monthly Visitors card, sourced from
+real seeded snapshot history, zero console errors.
+
+**Seeding** — `SiteSeeder` replaced by `DemoDataSeeder` (the old name
+stopped describing what it seeds): one workspace, one user attached as
+owner, 3 sites with posts, plus 28 days of gently-trending
+`AnalyticsSnapshot` history per site (two full 14-day windows, so the
+new trend calculation has a real non-empty baseline on both sides).
+
+**Placeholder for future queues** — `PublishingJob` +
+`PublishingService::schedule()` records intent (a `pending` job row)
+without processing anything; the method boundary exists so a future
+`ProcessPublishingJob` queued job is additive later, not a refactor.
+
+**"AI Jobs" deliberately has no table** — named in the brief as a
+domain concept, but unlike `PublishingJob` (a generic, well-understood
+"async operation" shape), a real AI job's shape depends on a specific
+provider integration that doesn't exist yet. Documented in the ADR
+and Future Backlog as an intentional gap, not filled with a guessed
+schema likely to need a breaking migration later.
+
+**Second frontend widget migrated** — WordPress Overview now reads
+`GET /api/v1/sites?status=connected` (`src/services/api/sites.service.ts`
++ a mapper), same zero-widget-changes pattern as Milestone 6's KPI
+Cards. Added a real Empty state ("no connected site") the mock layer's
+fixture data never needed. Verified live: real network request, real
+site data rendered, zero console errors.
+
+**Testing** — 38 Pest tests across 6 files (up from Milestone 6's 4):
+`SiteCrudTest`, `PostCrudTest` (Feature — full HTTP flows, including
+soft-delete and cascade-delete behavior), `DomainRelationshipsTest`
+(Database/Relationship — every new relationship, the unique-snapshot-
+per-day constraint, model scopes), `CrudValidationTest` (Validation —
+every Form Request's rules, asserted against this API's actual
+`error.details` envelope shape, not Laravel's default), `PolicyTest`
+(Policy — role-based authorization logic in isolation),
+`DashboardSummaryTest` (rewritten for the new schema, plus a new case
+proving the trend calculation against known snapshot data).
+
+**Process notes**
+- Hit a real Laravel gotcha: `belongsToMany()`'s default pivot-table
+  name is alphabetical (`user_workspace`), not `workspace_user` as
+  named — fixed by passing the table name explicitly rather than
+  renaming the migration to match the convention.
+- Caught and fixed an off-by-one date range in the trend test's own
+  fixture data (not the service) after the first run produced a
+  plausible-but-wrong number — see `docs/ENGINEERING_JOURNAL.md` for
+  the full investigation.
+
+**Verification** — Frontend: `lint`, `typecheck`, `build` all pass.
+Backend: `php artisan test` (38/38 passing), `php artisan route:list`
+(15 routes, including the 10 new CRUD routes), `php artisan
+migrate:fresh --seed` (clean from scratch, twice — once before and
+once after the index fixes). Live integration verified in a real
+browser: two widgets pulling real data, real visitor trend rendered,
+zero console errors.
+
+**Documentation** — `docs/adr/0005-domain-model.md` (new, comprehensive
+— entity relationships, every schema trade-off, rejected alternatives,
+future evolution); `docs/ENGINEERING_JOURNAL.md` gained two new
+investigation entries, an updated Future Backlog, and two new
+**permanent** sections this milestone's brief specifically asked for —
+"Interview Highlights" and "Resume Highlights" — both restructured to
+accumulate per-milestone subsections going forward (Milestone 4.1's
+existing Interview Highlights content became the first subsection
+rather than being replaced); `docs/PROJECT.md` gained a "Domain & Data
+Platform" section and updated Known Limitations/Status/Stack table;
+`docs/ROADMAP.md` milestone 7 (left as "TBD" in Milestone 6) filled in
+and marked complete.
+
+## 2026-07-13 — Milestone 6: Backend Foundation (Laravel)
+
+First real backend. Two parts: closing the four verified M5 findings
+(quick, scoped fixes — see the Engineering Journal for each), then a
+Laravel 12 API foundation with exactly one real endpoint and one
+migrated frontend widget, proving the mock-to-real pattern without
+rewriting anything the mock layer already got right. Full reasoning in
+`docs/adr/0004-backend-foundation.md`; this entry is the what.
+
+**M5 findings closed** (see `docs/ENGINEERING_JOURNAL.md` for the full
+reasoning behind each): `WelcomeSection`'s `<h1>` now always renders
+(verified 0→1 in the actual production static HTML); the "My
+Workspace" placeholder button uses native `disabled`, matching
+`QuickActions`; the dead `getQuickActions()` export was removed;
+`useNotificationStore` is now wired to `RecentActivity`'s real query
+data instead of sitting permanently at zero.
+
+**Environment setup.** Neither PHP nor Composer were on `PATH` in this
+environment — found PHP 8.2.12 already installed via XAMPP
+(`C:\xampp\php`), installed Composer 2.10.2 via the official installer
+script (the `composer.github.io` signature-check endpoint was
+unreachable from this network; proceeded without it since the
+installer itself came from the canonical `getcomposer.org` domain over
+HTTPS), and added thin `php`/`composer` wrapper scripts to
+`~/bin` (already on `PATH`) for the rest of the session.
+
+**Laravel scaffold** — `composer create-project laravel/laravel:^12.0
+backend`, SQLite for local dev (zero services to run locally),
+migrated/seeded automatically as part of the create-project post-install
+hooks.
+
+**Architecture** (`backend/app/`): `Http/Controllers/Api/V1/` (one
+controller per domain), `Http/Resources/V1/`, `Http/Support/ApiResponse.php`
+(the JSON envelope every response goes through), `Http/Middleware/`
+(`AssignRequestId`, `SecureHeaders`), `Services/` (`DashboardService`,
+the one real business-logic class), `DTOs/` (`DashboardSummaryData`),
+`Enums/` (`SiteStatus`, `PostStatus`), `Exceptions/` (`ApiException`
+base, `ServiceUnavailableException` example, `ApiExceptionHandler`
+centralizing every error response), `Policies/` (`SitePolicy`,
+deny-by-default placeholder), `Events/`+`Listeners/`
+(`SiteConnected`/`LogSiteConnected`, placeholder, not dispatched yet).
+No repository layer — evaluated and deliberately not built (see the
+ADR's reasoning: nothing to abstract yet).
+
+**API** — versioned from the start (`routes/api.php` composes
+versions, `routes/api_v1.php` holds v1). Seven routes: `GET
+/api/v1/health` (real database check, separate from Laravel's built-in
+`/up`), `GET /api/v1/dashboard/summary` (real), and five placeholders
+(`sites`, `posts`, `analytics`, `ai`, `settings`) — one per domain the
+brief named, each returning a valid 200 with empty/minimal data rather
+than a 501, so the frontend can integrate against the route shape
+immediately even before the real logic exists.
+
+**Database** — two foundational tables, `sites` and `posts`
+(migrations + factories + `SiteSeeder`, fixture data shaped to
+resemble the frontend's own mock fixtures for a plausible side-by-side
+comparison). `DashboardService::summary()` aggregates connected sites,
+published/draft post counts, and storage/visitor sums — verified
+correct via 4 Pest Feature tests, including that a disconnected site's
+data is correctly excluded from the aggregate.
+
+**Error handling** — `ApiExceptionHandler::register()` (called from
+`bootstrap/app.php`'s `withExceptions()`) maps every failure mode —
+validation, not-found, unauthenticated, rate-limited, app-thrown
+`ApiException`, or an unhandled `Throwable` — through the same
+`ApiResponse::error()` envelope, with production responses never
+leaking raw exception messages (`config('app.debug')`-gated).
+
+**Observability/security groundwork, no external services wired
+yet** — `AssignRequestId` middleware (generates or forwards
+`X-Request-Id`, pushes it into Laravel's log context, echoes it on the
+response and in error envelopes); `SecureHeaders` middleware
+(`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Permissions-Policy`); `config/cors.php` restricted to the frontend's
+own origin via `FRONTEND_URLS` (not the framework's wildcard default),
+`supports_credentials: true` in anticipation of Milestone 8's Sanctum
+SPA auth. Sentry/OpenTelemetry: documented `.env.example` placeholders,
+not implemented.
+
+**Testing** — Pest 3 installed via `composer require` (not `laravel
+new --pest`, since the project already existed); `tests/Pest.php`
+binds `RefreshDatabase` for Feature tests. `DashboardSummaryTest.php`:
+envelope shape, correct aggregation against seeded data, the
+disconnected-site-excluded case, the zero-data case, and the
+request-ID header — 4 tests, 15 assertions, all passing. Deliberately
+not full coverage, per the brief's own scope.
+
+**Frontend integration** — `src/lib/api-client.ts` (the one place that
+calls the real API and unwraps its envelope, throwing a typed
+`ApiError` on failure), `src/services/api/dashboard.service.ts`
+(`getDashboardSummary()`), `src/features/dashboard/utils/map-summary-to-kpis.ts`
+(adapts the API's raw numeric response into the exact `Kpi[]` shape
+`KpiCards` already consumed). `kpi-cards.tsx` itself required **zero**
+changes — only `use-kpis.ts` changed which function it calls. The
+now-dead `getKpis()`/`mockKpis` were removed from the mock service
+layer rather than left unused. Verified end-to-end in a real browser
+against the running Laravel server: KPI Cards shows live aggregated
+numbers (3 connected sites, 9 published posts, 3 drafts, 18,204
+visitors, 8.2 GB / 30 GB storage — all traced back to the seeded
+database), zero console errors, confirmed via the actual network
+request hitting `localhost:8000`.
+
+**Tooling housekeeping** — `backend/` excluded from the frontend's
+ESLint (`eslint.config.mjs`), Prettier (`.prettierignore`), and
+TypeScript (`tsconfig.json`) — without this, `npm run lint` recursed
+into `backend/vendor/`'s bundled JS (Whoops's error-page assets) and
+produced dozens of irrelevant findings.
+
+**Process notes**
+- Hit the same class of environment issue documented in Milestone 3's
+  entry (`.next` cache corruption via `EINVAL: invalid argument,
+  readlink` on this OneDrive-synced project path) a second time, this
+  time as `bootstrap/cache` failing Laravel's writability check with a
+  stray `DENY` ACL entry on a reparse-point directory. Same fix both
+  times: delete and recreate the directory fresh. Two occurrences
+  across two different toolchains (Next.js, Laravel) is enough to call
+  this a standing environmental hazard of developing on a
+  OneDrive-synced path, not a one-off — noted in the Engineering
+  Journal as a documented, repeatable fix rather than something to
+  rediscover a third time.
+- Hit a leftover zombie dev-server process squatting on port 3000
+  twice during verification (once for the Next.js dev server, a
+  recurrence of the same class of issue the Milestone 5 review
+  independently found and documented) — same fix: identify the PID via
+  `netstat`, terminate it, restart clean. Worth deliberately checking
+  for before starting a dev server in future milestones, not just
+  reacting to it when a verification run produces confusing results.
+
+**Verification** — Frontend: `lint`, `typecheck`, `build` all pass.
+Backend: `php artisan test` (4/4 passing), `php artisan route:list`
+(7 routes registered correctly), `php artisan migrate` (clean, no
+errors). Live integration verified in a real browser (Playwright):
+real network request to the Laravel API, real seeded data rendered,
+zero console errors.
+
+**Documentation** — `docs/adr/0004-backend-foundation.md` (new);
+`docs/ENGINEERING_JOURNAL.md` gained the M5-findings-closure entry, a
+new investigation entry on the OneDrive reparse-point issue, and an
+updated Future Backlog; `docs/PROJECT.md` gained a "Backend Foundation"
+section, an updated Stack table, and updated Known Limitations/Status;
+`docs/ROADMAP.md` milestone 6 marked complete (retitled from the
+original "State Management"/"Laravel REST API" split, both folded into
+this one milestone); `backend/README.md` replaces Laravel's default
+boilerplate with real local-setup/environment-configuration docs.
+
 ## 2026-07-13 — Milestone 5: Dashboard Experience
 
 First milestone with real (mocked) data and real async states. Nine

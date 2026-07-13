@@ -3,32 +3,27 @@ import type {
   AnalyticsPoint,
   AnalyticsRange,
   Draft,
-  Kpi,
-  QuickAction,
   SystemHealth,
-  WordPressOverview,
 } from "@/features/dashboard/types/dashboard.types";
 
 import {
   mockActivity,
   mockAnalyticsByRange,
   mockDrafts,
-  mockKpis,
-  mockQuickActions,
   mockSystemHealth,
-  mockWordPressOverview,
 } from "./dashboard.mock-data";
 
 /**
- * Mock service layer standing in for the future Laravel REST API
- * (Milestone 7). Every function returns a Promise with a simulated
- * network delay so the calling code — TanStack Query hooks in
- * `src/features/dashboard/hooks/` — already exercises real async
- * loading/error/success handling. Swapping the mock layer for real
- * `fetch()` calls later should only require changing the function
- * bodies here, not any calling code, since the return types
- * (`src/features/dashboard/types/dashboard.types.ts`) are already
- * shaped like a plain API response.
+ * Mock service layer standing in for the real Laravel REST API
+ * (backend/, added Milestone 6). Every function returns a Promise
+ * with a simulated network delay so the calling code — TanStack
+ * Query hooks in `src/features/dashboard/hooks/` — already exercises
+ * real async loading/error/success handling. KPI Cards and WordPress
+ * Overview are migrated off this file already (`getKpis()` and
+ * `getWordPressOverview()` removed — see `src/services/api/` and
+ * docs/adr/0005-domain-model.md); every other widget in this file is
+ * still mock-backed and gets migrated the same way, one at a time, in
+ * future milestones.
  */
 
 const NETWORK_DELAY_MS = 600;
@@ -39,20 +34,8 @@ function delay<T>(value: T, ms = NETWORK_DELAY_MS): Promise<T> {
   });
 }
 
-export async function getKpis(): Promise<Kpi[]> {
-  return delay(mockKpis);
-}
-
-export async function getQuickActions(): Promise<QuickAction[]> {
-  return delay(mockQuickActions);
-}
-
 export async function getRecentActivity(): Promise<ActivityItem[]> {
   return delay(mockActivity);
-}
-
-export async function getWordPressOverview(): Promise<WordPressOverview> {
-  return delay(mockWordPressOverview);
 }
 
 export async function getAnalyticsPreview(

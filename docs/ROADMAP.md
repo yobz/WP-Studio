@@ -40,15 +40,34 @@ explicit approval.
       Error/Empty/Success across every widget); one Zustand store for
       genuinely cross-cutting state (notification count). See
       `docs/adr/0003-dashboard-data-architecture.md`.
-- [ ] **6. State Management** — Zustand stores, Context providers, TanStack
-      Query setup. Core infrastructure (query client config, one store,
-      the local-vs-global state pattern) already established in
-      Milestone 5 as dashboard needs required it — remaining work here
-      is expanding both as future feature milestones need them, not
-      building either from scratch.
-- [ ] **7. Laravel REST API** — Laravel 12 backend, MySQL schema, base API
-      endpoints.
-- [ ] **8. Authentication** — Auth flow between frontend and Laravel API.
+- [x] **6. Backend Foundation** — Laravel 12 backend (`backend/`,
+      versioned `/api/v1` routes, consistent JSON envelope, centralized
+      exception handling, SQLite + migrations/seeders/factories,
+      CORS/security-headers/request-ID groundwork, Pest testing).
+      Dashboard summary is the one real endpoint; five other domains
+      (Sites, Posts, Analytics, AI, Settings) are placeholders. KPI
+      Cards is the one frontend widget migrated off the mock service
+      layer, proving the pattern — see
+      `docs/adr/0004-backend-foundation.md`. Absorbs what the original
+      roadmap listed separately as "State Management" (already
+      substantially delivered in Milestone 5's query-client/Zustand
+      setup — see `docs/adr/0003-dashboard-data-architecture.md`) and
+      "Laravel REST API" — both folded into this single milestone
+      rather than run as two.
+- [x] **7. Domain & Data Platform** — Multi-tenant domain model
+      (`Workspace` ↔ `User` membership with roles; `Workspace` → `Site`
+      → `Post`/`AnalyticsSnapshot`; `PublishingJob` placeholder). Real
+      CRUD (Form Requests, Policies, Resources, Services) for Sites and
+      Posts, replacing Milestone 6's placeholders. `AnalyticsSnapshot`
+      replaces the denormalized `monthly_visitors` column, enabling a
+      real Dashboard trend calculation. 38 Pest tests (Feature/
+      Database/Relationship/Validation/Policy). WordPress Overview
+      migrated off the mock layer as the second real-API widget. See
+      `docs/adr/0005-domain-model.md`.
+- [ ] **8. Authentication** — Auth flow between frontend and Laravel API
+      (Laravel Sanctum — `backend/config/cors.php`'s
+      `supports_credentials` and the `sanctum/csrf-cookie` CORS path are
+      already prepared for this, unused until now).
 - [ ] **9. WordPress Integration** — WordPress REST API connections, site
       management.
 - [ ] **10. Testing** — Vitest + RTL coverage for critical paths.

@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   AlertCircle,
   FileCheck2,
@@ -18,6 +19,7 @@ import { Typography } from "@/components/ui/typography";
 import { useRecentActivity } from "@/features/dashboard/hooks/use-recent-activity";
 import type { ActivityType } from "@/features/dashboard/types/dashboard.types";
 import { formatRelativeTime } from "@/lib/format";
+import { useNotificationStore } from "@/store/notification-store";
 
 const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
   "post-published": FileCheck2,
@@ -34,6 +36,19 @@ function RecentActivity() {
     refetch,
     isRefetching,
   } = useRecentActivity();
+
+  // Ties the header's notification badge to this widget's own data —
+  // the header's copy already reads "N updates from your dashboard
+  // activity," so activity count is the count. TanStack Query v5
+  // removed onSuccess from useQuery; watching `data` via effect is the
+  // supported replacement. Real "unread" tracking (dismissal that
+  // persists, per-item read state) needs a backend and is out of
+  // scope until notifications are a real feature — see
+  // docs/ENGINEERING_JOURNAL.md.
+  const setNotificationCount = useNotificationStore((state) => state.setCount);
+  React.useEffect(() => {
+    if (activity) setNotificationCount(activity.length);
+  }, [activity, setNotificationCount]);
 
   return (
     <Card data-slot="recent-activity">

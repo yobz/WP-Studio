@@ -2,10 +2,8 @@ import type {
   ActivityItem,
   AnalyticsPoint,
   Draft,
-  Kpi,
   QuickAction,
   SystemHealth,
-  WordPressOverview,
 } from "@/features/dashboard/types/dashboard.types";
 
 const HOUR = 60 * 60 * 1000;
@@ -13,38 +11,9 @@ const DAY = 24 * HOUR;
 const hoursAgo = (n: number) => new Date(Date.now() - n * HOUR).toISOString();
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
-export const mockKpis: Kpi[] = [
-  {
-    id: "connected-sites",
-    label: "Connected Sites",
-    value: "4",
-    trend: { value: "+1 this month", direction: "up" },
-  },
-  {
-    id: "published-posts",
-    label: "Published Posts",
-    value: "128",
-    trend: { value: "+12 this month", direction: "up" },
-  },
-  {
-    id: "draft-posts",
-    label: "Draft Posts",
-    value: "7",
-    trend: { value: "0 this week", direction: "neutral" },
-  },
-  {
-    id: "monthly-visitors",
-    label: "Monthly Visitors",
-    value: "18,204",
-    trend: { value: "+8.2%", direction: "up" },
-  },
-  {
-    id: "storage-usage",
-    label: "Storage Usage",
-    value: "2.4 GB / 10 GB",
-    trend: { value: "24% used", direction: "neutral" },
-  },
-];
+// KPI mock data removed — KPI Cards now reads from the real Laravel
+// endpoint (src/services/api/dashboard.service.ts). See
+// docs/adr/0004-backend-foundation.md.
 
 export const mockQuickActions: QuickAction[] = [
   {
@@ -106,14 +75,6 @@ export const mockActivity: ActivityItem[] = [
     timestamp: daysAgo(2),
   },
 ];
-
-export const mockWordPressOverview: WordPressOverview = {
-  siteName: "Acme Blog",
-  status: "connected",
-  wordpressVersion: "6.7.1",
-  theme: "Twenty Twenty-Five",
-  pluginUpdatesAvailable: 3,
-};
 
 function buildAnalyticsSeries(days: number): AnalyticsPoint[] {
   const points: AnalyticsPoint[] = [];

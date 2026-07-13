@@ -16,13 +16,13 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | ----------------- | ------------------------------------ |
 | Frontend          | Next.js 15, React 19, TypeScript     |
 | Styling           | Tailwind CSS 4, shadcn/ui (Base UI primitives), Lucide React |
-| Backend           | Laravel 12, PHP                      |
-| Database          | MySQL                                |
+| Backend           | Laravel 12, PHP 8.2 (`backend/`, own README/ADR)  |
+| Database          | SQLite (local dev, Milestone 6); MySQL/PostgreSQL a production candidate, not yet decided |
 | Client state      | Zustand, React Context API           |
 | Server state       | TanStack Query                       |
 | Forms/validation  | React Hook Form, Zod                 |
 | Tables/charts     | TanStack Table, Recharts             |
-| Testing           | Vitest, React Testing Library        |
+| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 38 tests across Feature/Database/Validation/Policy, Milestones 6–7) |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions                       |
 
@@ -291,6 +291,105 @@ necessarily a Client Component (`useQuery` is a client hook) except
 for this milestone, not an oversight — see the ADR's "Server vs. Client
 Components" section.
 
+## Backend Foundation (Milestone 6)
+
+**Location and status.** `backend/` is a self-contained Laravel 12
+application (own `composer.json`, `.env`, `README.md`) — see
+`backend/README.md` for local setup and `docs/adr/0004-backend-foundation.md`
+for the full architecture, every trade-off, and the future migration
+path. No authentication yet (Milestone 8); every route is currently
+open. Architecture only — no production business logic.
+
+**API.** Versioned from the start: `routes/api.php` composes versions,
+`routes/api_v1.php` holds the actual routes, so `/api/v2` is additive,
+not a rewrite. Every response uses one JSON envelope
+(`App\Http\Support\ApiResponse`): `{"success": true, "data", "meta"?}`
+on success, `{"success": false, "error": {"code", "message", "details"?}, "request_id"?}`
+on failure — the latter rendered centrally by `App\Exceptions\ApiExceptionHandler`
+for every failure mode (validation, not-found, unhandled exception),
+so a frontend consumer branches on one shape regardless of what failed.
+
+**Endpoints (Milestone 6 state — see Milestone 7 below for what
+changed).** `GET /api/v1/dashboard/summary` is real — backed by
+`DashboardService`, aggregating the `sites`/`posts` tables. `sites`,
+`posts`, `analytics`, `ai`, `settings` are placeholders (200 with
+empty/minimal data), one per domain the brief named, proving the
+route/versioning/envelope pattern before any of those five have real
+logic. `GET /api/v1/health` checks the actual database connection,
+separate from Laravel's own built-in `/up`.
+
+**Database (Milestone 6 state).** SQLite locally; two foundational
+tables (`sites`, `posts`) matching the WordPress Sites and Posts
+domains, with a `SiteSeeder` shaped to resemble the frontend's own
+mock fixtures. No repository layer (see the ADR's reasoning — nothing
+to abstract yet); one DTO (`DashboardSummaryData`) for the one
+endpoint with real aggregation logic.
+
+**Observability and security groundwork, not yet wired to anything
+external.** `AssignRequestId` middleware tags every request/response/log
+line with a correlation ID; `SecureHeaders` middleware sets baseline
+response headers; `config/cors.php` restricts cross-origin requests to
+the frontend's own origin (not the framework's wildcard default).
+Sentry/OpenTelemetry are documented integration points
+(`.env.example` placeholders), not implemented.
+
+**Frontend integration — the mock-to-real pattern.** `src/lib/api-client.ts`
+is the one place that calls the real API and unwraps its envelope.
+KPI Cards was the one widget migrated this milestone
+(`src/services/api/dashboard.service.ts` +
+`src/features/dashboard/utils/map-summary-to-kpis.ts` map the API's
+raw numeric response into the exact `Kpi[]` shape the widget already
+consumed) — `kpi-cards.tsx` itself needed **zero** changes, only its
+hook's data source.
+
+## Domain & Data Platform (Milestone 7)
+
+**Tenancy.** `Workspace` is now the tenant boundary every domain
+concept hangs off — every `Site` belongs to exactly one `Workspace`;
+a `User` can belong to more than one, via a `workspace_user` pivot
+carrying a `role` (owner/admin/member). Full reasoning, entity
+relationships, and every schema trade-off in
+`docs/adr/0005-domain-model.md`.
+
+**Real CRUD.** `sites` and `posts` are no longer placeholders —
+`Route::apiResource` gives both full `index`/`show`/`store`/`update`/
+`destroy`, validated by Form Requests (`StoreSiteRequest`,
+`UpdateSiteRequest`, `StorePostRequest`, `UpdatePostRequest`,
+`IndexSitesRequest`, `IndexPostsRequest`), authorized by real (if not
+yet route-wired) `SitePolicy`/`PostPolicy` logic, and rendered through
+`SiteResource`/`PostResource`. `analytics`, `ai`, `settings` remain
+placeholders. `Site` and `Post` are soft-deletable (`SoftDeletes`) —
+recoverable, not destructive.
+
+**Real analytics history.** `AnalyticsSnapshot` (one row per site per
+day) replaces Milestone 6's denormalized `sites.monthly_visitors`
+column. `DashboardService` now computes a genuine period-over-period
+visitor trend (trailing 14 days vs. the 14 before that) instead of a
+single point-in-time number — closing a gap flagged in the Milestone 5
+and 6 reviews. The frontend's Monthly Visitors KPI now shows a real
+trend arrow, verified live against the running backend.
+
+**Placeholder for future queues.** `PublishingJob` (one row per
+publish attempt, status `pending`/`processing`/`completed`/`failed`)
+and `PublishingService::schedule()` establish the shape a future
+queued "actually publish to WordPress" job will update — nothing
+processes these yet.
+
+**Testing.** 38 Pest tests across 6 files: Feature (full HTTP CRUD
+flows for Sites and Posts), Database/Relationship (`Workspace`↔`Site`
+↔`Post`↔`AnalyticsSnapshot`↔`PublishingJob`, cascading deletes, the
+`workspace_user` pivot, model scopes), Validation (every Form
+Request's rules, asserted against this API's actual error envelope
+shape, not Laravel's default), and Policy (`SitePolicy` tested
+directly against real workspace roles, ahead of Milestone 8 wiring it
+into routes).
+
+**Second widget migrated.** WordPress Overview now reads
+`GET /api/v1/sites?status=connected` via `src/services/api/sites.service.ts`
++ a mapper, same zero-widget-changes pattern as KPI Cards — including
+a real Empty state for "no connected site" (a case the mock layer's
+fixture data never needed, since it always had exactly one site).
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -321,18 +420,35 @@ Components" section.
   rule against, and guessing risks getting it wrong. Documented inline
   and in `docs/adr/0002-product-shell.md` for whoever adds the first
   nested route.
-- All dashboard data is mocked (Milestone 5) — no Laravel API,
-  database, or auth exists yet. Recent Drafts' error demo is
-  module-scoped (resets on full page reload, not client-side
-  navigation) — a known, accepted quirk of demoing a deterministic
-  failure against mock data; see `docs/ENGINEERING_JOURNAL.md`.
+- Six of nine dashboard widgets are still mocked (KPI Cards and
+  WordPress Overview are real as of Milestones 6–7) — no auth exists
+  yet, either on the frontend or any backend route. Recent Drafts'
+  error demo is module-scoped (resets on full page reload, not
+  client-side navigation) — a known, accepted quirk of demoing a
+  deterministic failure against mock data; see
+  `docs/ENGINEERING_JOURNAL.md`.
 - AI Assistant Preview has no backend — `Generate` is intentionally
   disabled. Future integration point documented inline in
-  `src/features/dashboard/components/ai-assistant-preview.tsx`.
+  `src/features/dashboard/components/ai-assistant-preview.tsx`; no
+  "AI Jobs" table exists yet either (deliberately deferred — see
+  `docs/adr/0005-domain-model.md`).
+- Every backend API route is currently unauthenticated (Milestone 8
+  adds Sanctum) — acceptable for local development against seeded demo
+  data, not for any real deployment. `SitePolicy`/`PostPolicy` contain
+  real, tested authorization logic ready to be wired in, but no route
+  calls `authorize()` yet. See `docs/adr/0004-backend-foundation.md`
+  and `docs/adr/0005-domain-model.md`.
+- No repository layer, no real analytics *events* schema (only daily
+  snapshots), no pagination on Sites/Posts index endpoints, no
+  dedicated workspace-deletion flow, SQLite (not a server database) in
+  local development — all deliberate Milestone 6–7 scope decisions,
+  not gaps; see both ADRs' Trade-offs sections for the reasoning
+  behind each, and `docs/ENGINEERING_JOURNAL.md`'s Future Backlog for
+  what each unblocks.
 
 ## Status
 
-Milestone 5 (Dashboard Experience) complete. See `ROADMAP.md` for
+Milestone 7 (Domain & Data Platform) complete. See `ROADMAP.md` for
 the full milestone list, `DEVLOG.md` for a running log of completed
 work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
 decisions and the reasoning behind them.

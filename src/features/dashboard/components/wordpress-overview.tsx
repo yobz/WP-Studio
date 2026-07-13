@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Globe } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
@@ -43,6 +43,12 @@ function WordPressOverview() {
                 Try again
               </Button>
             }
+          />
+        ) : !overview ? (
+          <EmptyState
+            icon={Globe}
+            title="No site connected"
+            description="Connect a WordPress site to see its overview here."
           />
         ) : (
           <div className="flex flex-col gap-4">
