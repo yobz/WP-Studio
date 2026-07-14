@@ -6,9 +6,6 @@ use App\Enums\PublishingJobStatus;
 use App\Models\Post;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<\App\Models\PublishingJob>
- */
 class PublishingJobFactory extends Factory
 {
     public function definition(): array

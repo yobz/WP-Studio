@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Database\Factories\AnalyticsSnapshotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +9,6 @@ use Illuminate\Database\Eloquent\Builder;
 
 class AnalyticsSnapshot extends Model
 {
-    /** @use HasFactory<AnalyticsSnapshotFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -36,10 +34,6 @@ class AnalyticsSnapshot extends Model
         return $this->belongsTo(Site::class);
     }
 
-    /**
-     * @param  Builder<AnalyticsSnapshot>  $query
-     * @return Builder<AnalyticsSnapshot>
-     */
     public function scopeMostRecentFirst(Builder $query): Builder
     {
         return $query->orderByDesc('snapshot_date');

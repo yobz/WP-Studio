@@ -15,8 +15,6 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // No auth yet (Milestone 8) — this user exists only as
-        // scaffolding Sanctum/login work will need later.
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',

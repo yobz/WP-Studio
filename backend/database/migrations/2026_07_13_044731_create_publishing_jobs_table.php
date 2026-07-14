@@ -6,15 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Placeholder — nothing dispatches a real queued job onto this
-     * table yet (no queue worker logic exists). The table/model exist
-     * now so `PublishingService::schedule()` has a real record to
-     * create, establishing the shape a future queued job would update
-     * (status transitions, timestamps, error capture) rather than
-     * guessing at it when async publishing actually gets built. See
-     * docs/adr/0005-domain-model.md.
-     */
     public function up(): void
     {
         Schema::create('publishing_jobs', function (Blueprint $table) {

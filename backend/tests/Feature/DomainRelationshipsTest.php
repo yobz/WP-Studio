@@ -80,7 +80,7 @@ it('scopes sites to only connected via Site::connected()', function () {
 it('scopes posts to published vs. unpublished via Post scopes', function () {
     $site = Site::factory()->create();
     Post::factory()->for($site)->published()->count(2)->create();
-    Post::factory()->for($site)->count(1)->create(); // draft
+    Post::factory()->for($site)->count(1)->create();
     Post::factory()->for($site)->inReview()->count(1)->create();
 
     expect(Post::query()->published()->count())->toBe(2)

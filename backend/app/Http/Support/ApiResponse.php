@@ -5,15 +5,6 @@ namespace App\Http\Support;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * The single place that defines the API's JSON envelope shape. Every
- * controller and the exception handler both go through this class, so
- * "what does a WP Studio API response look like" has exactly one
- * answer, documented in docs/adr/0004-backend-foundation.md.
- *
- * Success: {"success": true, "data": ..., "meta"?: ...}
- * Error:   {"success": false, "error": {"code", "message", "details"?}, "request_id"?}
- */
 class ApiResponse
 {
     public static function success(

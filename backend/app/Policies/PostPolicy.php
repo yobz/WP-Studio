@@ -7,13 +7,6 @@ use App\Models\Post;
 use App\Models\Site;
 use App\Models\User;
 
-/**
- * Same posture as SitePolicy — real logic, not wired to any route yet.
- * Authorization flows through the post's site's workspace rather than
- * a direct post-owner column, since there isn't one (a post doesn't
- * have its own membership list; it inherits its site's). See
- * docs/adr/0005-domain-model.md.
- */
 class PostPolicy
 {
     public function viewAny(User $user, Site $site): bool

@@ -13,12 +13,6 @@ class UpdatePostRequest extends FormRequest
         return true;
     }
 
-    /**
-     * `site_id` deliberately absent — same reasoning as
-     * UpdateSiteRequest's missing `workspace_id`.
-     *
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [

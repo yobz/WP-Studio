@@ -4,13 +4,6 @@ namespace App\Exceptions;
 
 use Exception;
 
-/**
- * Base class for exceptions application code throws deliberately (as
- * opposed to framework exceptions like ValidationException, which
- * ApiExceptionHandler maps separately). Carries everything
- * ApiExceptionHandler needs to render a consistent envelope without
- * inspecting the exception type.
- */
 class ApiException extends Exception
 {
     /**

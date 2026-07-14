@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('posts', function (Blueprint $table) {
@@ -18,8 +15,6 @@ return new class extends Migration
             $table->string('status')->default('draft');
             $table->timestamp('published_at')->nullable();
             $table->timestamps();
-            // Same reasoning as sites — a deleted post is recoverable,
-            // not gone. See docs/adr/0005-domain-model.md.
             $table->softDeletes();
 
             $table->index(['site_id', 'status']);
@@ -27,9 +22,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('posts');

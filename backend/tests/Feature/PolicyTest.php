@@ -6,12 +6,6 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Policies\SitePolicy;
 
-/**
- * Exercises SitePolicy/PostPolicy directly — not through HTTP, since no
- * route calls `authorize()` yet (every route is still open; see
- * docs/adr/0005-domain-model.md). These prove the *logic* is correct
- * ahead of Milestone 8 actually wiring it in.
- */
 it('lets a workspace member view a site, but not an outsider', function () {
     $workspace = Workspace::factory()->create();
     $member = User::factory()->create();

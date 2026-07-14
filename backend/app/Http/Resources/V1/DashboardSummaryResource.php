@@ -2,18 +2,11 @@
 
 namespace App\Http\Resources\V1;
 
-use App\DTOs\DashboardSummaryData;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * @property DashboardSummaryData $resource
- */
 class DashboardSummaryResource extends JsonResource
 {
-    /**
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [

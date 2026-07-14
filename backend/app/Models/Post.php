@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\PostStatus;
-use Database\Factories\PostFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +12,6 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Post extends Model
 {
-    /** @use HasFactory<PostFactory> */
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -41,19 +39,11 @@ class Post extends Model
         return $this->hasMany(PublishingJob::class);
     }
 
-    /**
-     * @param  Builder<Post>  $query
-     * @return Builder<Post>
-     */
     public function scopePublished(Builder $query): Builder
     {
         return $query->where('status', PostStatus::Published);
     }
 
-    /**
-     * @param  Builder<Post>  $query
-     * @return Builder<Post>
-     */
     public function scopeUnpublished(Builder $query): Builder
     {
         return $query->whereIn('status', [PostStatus::Draft, PostStatus::InReview]);
