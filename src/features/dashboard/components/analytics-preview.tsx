@@ -32,11 +32,6 @@ function formatTick(date: string) {
   });
 }
 
-/**
- * Time range is local, component-only state — nothing else on the
- * dashboard needs to react to it, so it doesn't belong in a shared
- * store. See docs/adr/0003-dashboard-data-architecture.md.
- */
 function AnalyticsPreview() {
   const [range, setRange] = React.useState<AnalyticsRange>("7d");
   const {

@@ -11,10 +11,6 @@ const DAY = 24 * HOUR;
 const hoursAgo = (n: number) => new Date(Date.now() - n * HOUR).toISOString();
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
-// KPI mock data removed — KPI Cards now reads from the real Laravel
-// endpoint (src/services/api/dashboard.service.ts). See
-// docs/adr/0004-backend-foundation.md.
-
 export const mockQuickActions: QuickAction[] = [
   {
     id: "new-post",
@@ -80,8 +76,6 @@ function buildAnalyticsSeries(days: number): AnalyticsPoint[] {
   const points: AnalyticsPoint[] = [];
   let visitors = 480;
   for (let i = days - 1; i >= 0; i--) {
-    // Gentle upward drift with day-to-day noise, clamped to stay positive —
-    // reads as a believable real traffic trend rather than a straight line.
     visitors = Math.max(
       120,
       Math.round(visitors + (Math.random() - 0.35) * 60),

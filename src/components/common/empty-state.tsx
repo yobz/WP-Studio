@@ -7,13 +7,6 @@ import { cn } from "@/lib/utils";
 interface EmptyStateProps extends React.ComponentProps<"div"> {
   icon?: LucideIcon;
   title: string;
-  /**
-   * Heading level for `title`. Defaults to `h2` — the correct level when
-   * `EmptyState` follows a page's `PageHeader` (which renders `h1`), the
-   * common case across the app today. Pass `h1` when `EmptyState` is a
-   * page's only heading (e.g. the 404 page, an error boundary) so the
-   * page still has exactly one `h1` and no heading level gets skipped.
-   */
   titleAs?: "h1" | "h2" | "h3";
   description?: string;
   action?: React.ReactNode;

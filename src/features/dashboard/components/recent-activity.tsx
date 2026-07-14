@@ -37,14 +37,6 @@ function RecentActivity() {
     isRefetching,
   } = useRecentActivity();
 
-  // Ties the header's notification badge to this widget's own data —
-  // the header's copy already reads "N updates from your dashboard
-  // activity," so activity count is the count. TanStack Query v5
-  // removed onSuccess from useQuery; watching `data` via effect is the
-  // supported replacement. Real "unread" tracking (dismissal that
-  // persists, per-item read state) needs a backend and is out of
-  // scope until notifications are a real feature — see
-  // docs/ENGINEERING_JOURNAL.md.
   const setNotificationCount = useNotificationStore((state) => state.setCount);
   React.useEffect(() => {
     if (activity) setNotificationCount(activity.length);

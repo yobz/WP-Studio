@@ -13,8 +13,6 @@ interface AppGroupErrorProps {
 
 export default function AppGroupError({ error, reset }: AppGroupErrorProps) {
   React.useEffect(() => {
-    // Placeholder for future error reporting (Sentry, etc.) — logged for
-    // now so failures aren't silently swallowed during development.
     console.error(error);
   }, [error]);
 

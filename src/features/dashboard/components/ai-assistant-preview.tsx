@@ -15,13 +15,6 @@ const SUGGESTED_PROMPTS = [
   "Suggest 5 SEO titles for a post about site speed",
 ];
 
-/**
- * Preview only — no AI backend exists yet. Future integration point:
- * `onGenerate` below should call a Laravel endpoint (e.g.
- * `POST /api/ai/drafts`) with `prompt`, streaming or polling the
- * response into a new draft. See docs/adr/0003-dashboard-data-architecture.md
- * and ROADMAP.md for the planned AI integration milestone.
- */
 function AiAssistantPreview() {
   const [prompt, setPrompt] = React.useState("");
 

@@ -6,12 +6,6 @@ import { ChevronDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Typography } from "@/components/ui/typography";
 
-// A static, time-agnostic default — identical on the server-rendered
-// HTML and the client's first paint, so the <h1> itself is never
-// absent (see docs/ENGINEERING_JOURNAL.md, "Restoring a server-safe
-// <h1>"). Only the *text inside* an already-present heading updates
-// post-mount, which isn't a hydration mismatch — the DOM node exists
-// identically in both renders.
 const DEFAULT_GREETING = "Welcome back";
 
 function getGreeting(hour: number): string {
@@ -21,12 +15,6 @@ function getGreeting(hour: number): string {
 }
 
 function WelcomeSection() {
-  // The *date* still needs client-time evaluation to avoid a stale
-  // build-time value (this route is statically generated) — deferring
-  // it post-mount, same pattern as `ThemeToggle`
-  // (src/components/common/theme-toggle.tsx). The heading text is
-  // handled separately above: it always renders, it just starts
-  // generic and becomes time-aware once mounted.
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
@@ -55,14 +43,6 @@ function WelcomeSection() {
         )}
       </div>
 
-      {/*
-        Placeholder — no real multi-workspace support yet (no auth).
-        Native `disabled`, not `aria-disabled`: this is a plain button
-        with no destination to guard against (unlike a disabled link,
-        which can't take a native `disabled` attribute), so the
-        simpler, correct primitive is the right one — see
-        `QuickActions` for the same reasoning applied consistently.
-      */}
       <button
         type="button"
         disabled

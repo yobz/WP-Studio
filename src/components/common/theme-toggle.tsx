@@ -10,10 +10,6 @@ function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
-  // Avoids a hydration mismatch: `resolvedTheme` is undefined on the server
-  // and on the very first client render (next-themes resolves it from
-  // localStorage/system preference after mount), so render a neutral,
-  // non-interactive icon until then rather than guessing.
   React.useEffect(() => setMounted(true), []);
 
   if (!mounted) {

@@ -43,12 +43,6 @@ const buttonVariants = cva(
 
 type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 
-/**
- * Icon-only sizes render no visible text, so consumers must supply an
- * accessible name. A `Tooltip` is a hint, not a substitute — screen
- * readers need `aria-label` (or `aria-labelledby`), which this union
- * enforces at compile time rather than relying on convention/review.
- */
 type IconOnlyButtonSize = "icon" | "icon-xs" | "icon-sm" | "icon-lg";
 type LabeledButtonSize = Exclude<ButtonSize, IconOnlyButtonSize>;
 

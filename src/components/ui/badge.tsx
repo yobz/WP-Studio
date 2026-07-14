@@ -33,9 +33,6 @@ function Badge({
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
-  // `mergeProps`'s parameter type doesn't declare arbitrary `data-*` keys
-  // (even though React/the DOM allow them), so this is typed explicitly
-  // rather than relying on excess-property inference from an inline literal.
   const badgeSlotProps: useRender.ComponentProps<"span"> & {
     "data-slot": string;
   } = {

@@ -18,12 +18,6 @@ const QUICK_ACTION_ICONS: Record<QuickAction["id"], LucideIcon> = {
   "view-analytics": BarChart3,
 };
 
-/**
- * Static preview only — not wired to real navigation or mutations yet.
- * Buttons are genuinely `disabled` (not `aria-disabled`) because there is
- * no destination or handler to guard against, unlike links elsewhere in
- * the shell that route somewhere real.
- */
 function QuickActions() {
   return (
     <Card data-slot="quick-actions">
