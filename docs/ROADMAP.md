@@ -180,11 +180,34 @@ real data, and a real connection to a real WordPress site.
 Everything that makes the platform behave like a real multi-tenant
 product under real usage, not just a single-request demo.
 
-- [ ] **11. Background Jobs & Queues** — A real queue worker
-      (`QUEUE_CONNECTION` is already `database` in `backend/.env`)
-      processing `PublishingJob` rows past `pending` for the first
-      time; `PublishingService::schedule()` already exists as the
-      seam this attaches to (`docs/adr/0005-domain-model.md`).
+- [x] **11. Background Job & Queue Platform** — Delivered as a
+      reusable asynchronous-processing platform rather than a single
+      point feature, per explicit brief. `POST /sites/{site}/sync`
+      (Milestone 10) now dispatches `SyncWordPressPostsJob` instead of
+      blocking the request — the exact seam Milestone 10's own ADR
+      named in advance. A second job, `RefreshSiteMetadataJob`,
+      proves the pattern generalizes, consumed by a new daily
+      Scheduler task rather than the existing manual "Refresh
+      Metadata" button (deliberately left synchronous — fast/bounded
+      enough that immediate feedback is still correct UX). Both jobs
+      share real retry (3 attempts), exponential backoff, and
+      per-resource uniqueness (via Laravel's cache-lock mechanism,
+      verified against the real `database` driver in tests, not just
+      asserted). System Health's `backgroundQueue` placeholder
+      (Milestone 10.1) is now real — a `QueueHealthChecker` reads
+      actual `pending`/`failed` counts from the `jobs`/`failed_jobs`
+      tables. Frontend polls (`useSite`/`useSyncStatus`, 2s interval,
+      only while a resource is actively syncing) instead of blocking
+      on a loading spinner, isolated to two hooks so a future
+      WebSocket/SSE push mechanism needs no other changes. **Does
+      not** wire `PublishingJob`/`PublishingService::schedule()`
+      (Milestone 7's placeholder for a future *write-to-WordPress*
+      queue) into a real consumer — Publishing itself remains future
+      scope; this milestone's job platform is exactly the
+      infrastructure that future Publishing milestone will dispatch
+      onto, per `docs/adr/0009-background-job-platform.md`'s Future
+      Evolution section. See
+      `docs/adr/0009-background-job-platform.md`.
 - [ ] **12. Storage & Media** — File/media storage for site and post
       content (local disk today, S3-compatible object storage as the
       production target — a real decision this milestone makes and

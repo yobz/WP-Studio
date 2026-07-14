@@ -14,8 +14,11 @@ class SystemHealthResource extends JsonResource
             'wordpress_connection' => $this->resource->wordpressConnection,
             'storage_used_percent' => $this->resource->storageUsedPercent,
             'background_queue' => [
-                'pending' => $this->resource->backgroundQueuePending,
-                'status' => $this->resource->backgroundQueueStatus,
+                'driver' => $this->resource->queueDriver,
+                'pending' => $this->resource->queuePending,
+                'failed' => $this->resource->queueFailed,
+                'oldest_pending_seconds' => $this->resource->queueOldestPendingSeconds,
+                'status' => $this->resource->queueStatus,
             ],
         ];
     }

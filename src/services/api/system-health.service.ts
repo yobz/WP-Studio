@@ -9,7 +9,10 @@ export interface ApiSystemHealth {
   wordpress_connection: SiteStatus;
   storage_used_percent: number;
   background_queue: {
-    pending: number;
+    driver: string;
+    pending: number | null;
+    failed: number;
+    oldest_pending_seconds: number | null;
     status: ServiceStatus;
   };
 }

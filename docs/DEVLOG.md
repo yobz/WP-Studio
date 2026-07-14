@@ -1,5 +1,106 @@
 # Devlog
 
+## 2026-07-14 — Milestone 11: Background Job & Queue Platform
+
+No expensive operation blocks an HTTP request anymore. Content sync —
+converted to a real, dispatched-and-polled async job — is the first
+consumer; the job platform itself is built to be reused by every
+future asynchronous need (AI generation, notifications, scheduled
+maintenance) without architectural change. Full reasoning in
+`docs/adr/0009-background-job-platform.md`; this entry is the what.
+
+**Two named seams, both closed this milestone.** Milestone 10's own
+ADR predicted content sync's synchronous-to-async conversion as a
+"worker calling it instead of a controller calling it inline"
+migration — that's exactly what happened, unchanged from the
+prediction. Milestone 10.1 left System Health's `backgroundQueue`
+hardcoded specifically because no real queue existed to report on —
+now it does, and the metric is real.
+
+**`SyncWordPressPostsJob`: `ContentSyncController::sync()` dispatches,
+doesn't block.** The endpoint now authorizes, fast-fails on a missing
+credential (still a synchronous `422` — that's a cheap check, not
+"expensive synchronization"), sets `Site.status = Syncing`, dispatches
+the job, and returns `202 Accepted` immediately. `ContentSyncService::sync()`
+itself is otherwise unchanged — the same DTO, the same idempotency
+logic, the same failure handling — only who calls it, and when,
+changed.
+
+**The `Syncing` transition lives in two places, deliberately.** The
+controller sets it before dispatch, for instant feedback (a queued job
+might not run for a moment). `ContentSyncService::sync()` *also* sets
+it at the start of its own execution, so a retried attempt after a
+transient failure re-enters "in progress" cleanly instead of showing a
+stale `Error` badge between attempts. Two writes to the same field,
+each covering a real gap the other can't see.
+
+**A second job proves the pattern generalizes, used by a new
+Scheduler task, not force-fit into an existing button.**
+`RefreshSiteMetadataJob` shares the same retry/backoff/uniqueness
+shape as the sync job. It's consumed by a new daily
+`Schedule::call()` task (`routes/console.php`) that refreshes metadata
+for every connected site — the exact "periodic background
+re-verification" scenario Milestone 9's own ADR predicted. Deliberately
+*not* wired into the existing manual "Refresh Metadata" button, which
+stays synchronous: that action is a single, bounded request, and a
+user clicking it wants an answer in seconds, not a queue round-trip.
+
+**Real retry, backoff, and uniqueness — not just configured, verified.**
+Both jobs: 3 tries, `[10, 30, 60]`s backoff, and per-site uniqueness
+via Laravel's cache-lock mechanism. The uniqueness guarantee was
+tested against the real `database` driver (not `Queue::fake()`, which
+bypasses locking entirely) — dispatching the same site's sync job
+twice in a row genuinely produces one row in the `jobs` table, not
+two.
+
+**A verified, not assumed, credential-security property.** Traced
+`SerializesModels`' actual behavior rather than trusting framework
+convention: a job's model properties serialize as a class name plus
+primary key only, refetched fresh on execution. `Site.credential` is
+never eager-loaded onto a job's `Site` property, so the encrypted
+WordPress Application Password never touches the `jobs` table's
+payload column, at any point, verifiably.
+
+**System Health's queue metrics are real.** A new `QueueHealthChecker`
+(mirroring the existing `DatabaseHealthChecker`) reads real
+`pending`/`failed` counts and the configured driver straight from the
+`jobs`/`failed_jobs` tables; `queueStatus` derives to `degraded` the
+moment a real failed job exists. Verified live: a real sync dispatched
+against the seeded environment's genuinely unreachable domain, picked
+up by a real `queue:work` process, correctly failed and landed in
+`failed_jobs` — and `GET /system-health` reflected `1 failed` /
+`degraded` immediately after, in a real browser, not a mocked
+assertion.
+
+**Frontend: conditional polling, not a spinner or WebSockets.**
+`useSite`/`useSyncStatus` poll every 2 seconds only while the
+underlying resource's status is `syncing`, stopping automatically the
+moment it settles. `SyncButton` no longer shows created/updated/
+skipped counts — that synchronous response shape doesn't exist
+anymore — it shows "Sync queued," then the site's existing status
+badge and `SyncSummary` card carry the live progress via the polling
+hooks. `SiteDetail` watches for the status transition *away from*
+`syncing` and invalidates the posts query at exactly that moment — the
+one piece of manual cache coordination polling alone doesn't cover.
+The polling logic is isolated to exactly two hooks, deliberately, so a
+future real-time push mechanism replaces it without touching any
+component or backend contract.
+
+**Verified end-to-end with a real queue worker, not just `Queue::fake()`.**
+Backend: 103 Pest tests passing (up from 95), including dispatch
+assertions, real uniqueness-locking behavior, real queue-metrics
+correctness, and a Scheduler-registration check. Frontend: typecheck/
+lint/build all pass. Live browser verification ran an actual
+`php artisan queue:work` process alongside the app servers — clicked
+"Sync Content," watched the job get picked up and processed by a real
+worker, watched the site correctly land in `Connection Error` against
+the seeded environment's fake domain, and watched System Health's
+queue metrics update to match. A live `axe-core` pass against the site
+detail page (before and after a sync) and the dashboard returned zero
+violations throughout.
+
+---
+
 ## 2026-07-14 — Milestone 10.1: API Completion & Frontend Migration
 
 The last mock data left the frontend — deliberately, one widget at a

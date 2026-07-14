@@ -10,5 +10,7 @@ export function useSite(id: number) {
   return useQuery({
     queryKey: siteQueryKey(id),
     queryFn: () => getSite(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "syncing" ? 2000 : false,
   });
 }

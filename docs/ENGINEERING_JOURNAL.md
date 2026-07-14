@@ -122,25 +122,28 @@ items are added, resolved, or reprioritized; not a chronological log
   (manual, user-triggered sync against a handful of connected sites);
   revisit with a real batch-upsert redesign once a real workspace's
   post volume makes it one.
-- **Content sync is fully synchronous, bounded to 20 pages (2,000
-  posts) per call** (found Milestone 10, by design). A safety cap on a
-  single blocking HTTP request, not a real product limit — repeated
-  syncs don't re-process hash-unchanged content, so this is
-  self-correcting today, not data loss. Named as the exact seam
-  Milestone 11 (Background Jobs & Queues) removes; see the ADR's
-  Future Evolution section.
+- ~~**Content sync is fully synchronous**~~ **Resolved, Milestone 11.**
+  `POST /sites/{site}/sync` now dispatches `SyncWordPressPostsJob`
+  instead of blocking the request — see
+  `docs/adr/0009-background-job-platform.md`. The 20-page (2,000-post)
+  cap itself is **not** removed, only the reason it originally existed
+  changed: it's now a bounded-execution safety measure inside an async
+  job with its own 300s timeout, the same "don't process unbounded
+  external data in one pass" discipline, just no longer motivated by
+  blocking an HTTP request.
 - **Content sync fetches only post metadata, no post body/content**
   (found Milestone 10, by design). Title, mapped status, dates, and
   the public URL are stored; the raw HTML body isn't fetched or
   persisted. Storing it ahead of an actual editing/Publishing feature
   needing it would be speculative — see the ADR's Rejected
   Alternatives.
-- **System Health's `backgroundQueue` is an honest, hardcoded
-  placeholder** (found Milestone 10.1, by design). Always reports `0
-  pending` / `operational` — there's no real queue system yet
-  (Milestone 11's job), so this is deliberately not simulating a
-  metric that doesn't exist rather than a bug. Revisit the moment a
-  real queue exists to report real pending-job counts.
+- ~~**System Health's `backgroundQueue` is an honest, hardcoded
+  placeholder**~~ **Resolved, Milestone 11.** `QueueHealthChecker`
+  reports real `pending`/`failed` counts from the `jobs`/`failed_jobs`
+  tables, the real configured driver, and a `degraded` status derived
+  from actual failed-job presence — verified live against a real
+  failed job in this milestone's own browser verification, not just
+  asserted.
 - **`DashboardService::recentActivity()` runs three separate queries
   and merges/sorts them in PHP** (found Milestone 10.1, by design).
   No persisted "activity log" table exists — the feed is derived
@@ -158,6 +161,37 @@ items are added, resolved, or reprioritized; not a chronological log
   category of deferred product decision as Registration (Milestone 8)
   and the "AI Jobs" table (Milestone 7). Build the real editable
   feature once that decision is made, not before.
+- **No process supervision for `queue:work`** (found Milestone 11, by
+  design). Nothing in this environment keeps a worker process running
+  or restarts it after a crash — a real deployment needs Supervisor
+  (or an equivalent) managing `queue:work`, which is real
+  infrastructure work, not application code. Deferred to Milestone 19
+  (Cloud Deployment & Security Hardening), the same pattern as every
+  other deployment-shaped decision already deferred there.
+- **`RefreshSiteMetadataJob` is not wired to the existing manual
+  "Refresh Metadata" button** (found Milestone 11, by design). The
+  button stays synchronous — a single, fast, bounded WordPress
+  request, unlike content sync's paginated fetch — so immediate
+  feedback is still the right UX. The job exists and is real,
+  currently consumed only by the new daily Scheduler task; wiring the
+  manual button to it too is a trivial, low-risk future change if a
+  reason to make that action async ever appears.
+- **`job_batches` is provisioned (Laravel default) but unused** (found
+  Milestone 11, by design). Nothing in this milestone dispatches
+  multiple related jobs that need batch-level coordination
+  (all-succeeded / any-failed tracking). A real candidate once a
+  "sync every site in a workspace" bulk action exists; not built
+  speculatively ahead of that.
+- **No lightweight notification fires on job completion beyond the
+  polling-driven status badge** (found Milestone 11, reviewed and
+  deliberately not built — see the brief's own "do not build a
+  complete notification platform" instruction). The site's status
+  badge and `SyncSummary` card already update automatically via
+  polling the moment a job completes; a separate toast/notification-
+  store entry would duplicate that signal for marginal benefit. Revisit
+  if a future milestone needs completion visibility beyond the page the
+  user triggered it from (e.g., "notify me even if I've navigated
+  away").
 
 ### Low Priority
 
@@ -645,6 +679,55 @@ means every remaining mock or placeholder has a written reason to
 still be one, the same discipline this project already applied to
 Registration (Milestone 8) and the "AI Jobs" table (Milestone 7).
 
+### Milestone 11 (Background Jobs & Queue Platform)
+
+**1. Putting the `Syncing` status transition in two places, deliberately,
+not redundantly.** *Problem:* a queued job doesn't start executing the
+instant it's dispatched — there can be real queue lag between "the
+controller returned" and "a worker actually picked this up." A status
+transition set only inside the job would leave the UI showing a stale
+"Connected" badge during that gap. *Chosen solution:* the controller
+sets `Syncing` synchronously, before dispatch, for instant feedback;
+`ContentSyncService::sync()` *also* sets `Syncing` at its own start,
+so a retried attempt (after a transient failure) re-enters a
+consistent "in progress" state rather than lingering on a stale
+`Error` badge between the failed attempt and the next retry. *Why
+this matters for an interview answer:* two writes to the same field
+from two different layers looks like duplication at first glance —
+the actual test is whether each one is covering a distinct real
+window of time the other can't see, which here it is.
+
+**2. Verifying a security property instead of assuming it.**
+*Problem:* the brief's Security section asked to review "queue
+payloads, serialized models, credential handling" — a WordPress
+Application Password is exactly the kind of secret that shouldn't
+leak into a job's serialized queue payload. *Investigation:* traced
+Laravel's `SerializesModels` trait behavior directly rather than
+trusting framework folklore — it serializes an Eloquent model as a
+class name + primary key only, and re-fetches the full model from the
+database on unserialize. Since `Site.credential` is a lazily-loaded
+relation never eager-loaded onto the job's `Site` property, the
+encrypted `application_password` genuinely never enters the `jobs`
+table's payload column at any point. *Why this matters for an
+interview answer:* "the framework handles that" is a claim worth
+actually checking once, for anything security-relevant, rather than
+carried forward as an assumption — the check here took minutes and
+turned a plausible-sounding property into a verified one.
+
+**3. Choosing not to wire the existing synchronous action to the new
+job, and writing down why.** *Problem:* `RefreshSiteMetadataJob` was
+built and the temptation was to immediately point the existing manual
+"Refresh Metadata" button at it too, since the job already exists.
+*Chosen solution:* left the button synchronous. It's a single, fast,
+bounded request (unlike content sync's paginated fetch) — a user
+clicking it wants an answer in a couple of seconds, and async would
+add UX latency (a queue round-trip) for no real benefit. The job is
+genuinely reused, just by the new Scheduler task instead. *Why this
+approach:* "we built a reusable job, so use it everywhere" is a false
+economy when the two call sites have genuinely different latency
+requirements — reuse should follow the actual need, not the existence
+of the abstraction.
+
 ---
 
 ## Resume Highlights
@@ -810,6 +893,90 @@ to real, shipped, verified work.
   carrying entirely new real-data-driven content and confirmed zero
   violations, and grew the backend automated test suite to 95 passing
   tests with zero regressions across an eight-file backend change set.
+
+### Milestone 11 (Background Jobs & Queue Platform)
+
+- Designed and implemented a production-grade asynchronous job
+  platform on Laravel's queue system — converted a previously
+  synchronous, request-blocking external-API integration into a
+  dispatch-and-poll architecture with configured retry limits,
+  exponential backoff, per-resource job uniqueness (preventing
+  duplicate concurrent processing of the same tenant resource), and
+  dedicated failure-handling logic that updates domain state
+  correctly after retries are exhausted.
+- Built a reusable job abstraction (a shared contract-driven pattern
+  across two job classes) explicitly designed for extension by future
+  consumers (AI generation, notifications, scheduled maintenance)
+  without requiring architectural changes — validated by immediately
+  reusing it for a second, unrelated background operation via the
+  Laravel Scheduler.
+- Replaced a hardcoded placeholder operational metric with a real one,
+  querying live queue-infrastructure tables to report accurate
+  pending/failed job counts and a derived health status — verified
+  end-to-end against a genuinely failed background job in a live
+  browser session, not just asserted in isolation.
+- Performed and documented a targeted security review of the new
+  asynchronous data path (serialized job payloads, credential
+  handling, tenant isolation across worker execution) — verified
+  directly, by reading framework internals, that an encrypted
+  third-party credential never enters the queue's persisted payload,
+  rather than assuming a framework convention held.
+- Wrote automated tests exercising real queue behavior (job
+  uniqueness enforced via the real cache-lock mechanism, real pending/
+  failed job counts read from the actual queue tables) rather than
+  only mocking the queue away, catching real configuration correctness
+  a fully-faked test suite would have missed. Grew the backend
+  automated test suite to 103 passing tests with zero regressions.
+- Made and documented a deliberate reuse-scope decision — built a
+  second reusable job but declined to wire it into an existing
+  synchronous user-facing action where async would add latency without
+  real benefit, resisting the temptation to force-fit a new
+  abstraction everywhere it technically could apply.
+
+---
+
+## 2026-07-14 — The `sync` queue driver rethrows job failures instead of swallowing them
+
+**Problem.** Writing the first failure-path test for `SyncWordPressPostsJob`
+raised a design question before any code was wrong: with
+`QUEUE_CONNECTION=sync` (this project's own test-environment default,
+`phpunit.xml`), does dispatching a job that ultimately fails behave
+like a real queue worker (retry, then quietly call `failed()`), or
+does the exception surface back to whatever called `::dispatch()`?
+Getting this wrong would mean either a test asserting the wrong HTTP
+status, or a production code path silently depending on test-only
+behavior.
+
+**Investigation.** Traced Laravel's `Illuminate\Queue\SyncQueue::push()`
+directly rather than guessing from the `database`/`redis` drivers'
+behavior. `SyncQueue` doesn't go through `Illuminate\Queue\Worker` at
+all — no retry loop, no backoff sleep, no attempt counter. It executes
+the job's `handle()` once, and on a thrown exception, calls
+`FailingJob::handle()` (which invokes the job's own `failed()`
+callback) and then **re-throws the original exception** back up
+through the `::dispatch()` call site.
+
+**Consequence, used deliberately rather than fought.** In this
+project's tests, `SyncWordPressPostsJob::dispatch($site)` inside
+`ContentSyncController::sync()` — when the job ultimately fails —
+throws synchronously, uncaught by the controller, and renders through
+the existing `ApiExceptionHandler` exactly as it did before this
+milestone's synchronous-to-async refactor. This meant the pre-existing
+test `marks the site as errored when WordPress is unreachable during
+sync` (originally written for the fully-synchronous M10 flow) needed
+**zero changes** to keep passing — a genuine, verified case of the
+test environment's queue driver preserving an existing contract by
+coincidence of its own implementation, not because I'd deliberately
+designed around it.
+
+**Lessons learned.** "Runs the job" and "behaves like a queue" are not
+the same guarantee — the `sync` driver is genuinely useful for tests
+specifically because it runs jobs inline, but its failure semantics
+(no retry, immediate rethrow) are a real behavioral difference from
+every other driver, worth confirming explicitly rather than assuming
+just because a test happened to pass. Documented here so a future
+milestone adding queue tests doesn't have to re-derive this from
+scratch.
 
 ---
 

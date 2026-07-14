@@ -34,6 +34,8 @@ class ContentSyncService
 
         $this->urlSafety->assertSafe($site->url);
 
+        $site->update(['status' => SiteStatus::Syncing]);
+
         $startedAt = now();
         $created = 0;
         $updated = 0;
@@ -91,7 +93,10 @@ class ContentSyncService
             throw $e;
         }
 
-        $site->update(['last_synced_at' => now()]);
+        $site->update([
+            'status' => SiteStatus::Connected,
+            'last_synced_at' => now(),
+        ]);
 
         ContentSynced::dispatch($site, $mapper->contentType(), $created, $updated, $skipped, $failed);
 

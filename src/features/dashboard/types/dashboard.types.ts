@@ -65,7 +65,10 @@ export interface SystemHealth {
   wordpressConnection: SiteStatus;
   storageUsedPercent: number;
   backgroundQueue: {
-    pending: number;
+    driver: string;
+    pending: number | null;
+    failed: number;
+    oldestPendingSeconds: number | null;
     status: ServiceStatus;
   };
 }

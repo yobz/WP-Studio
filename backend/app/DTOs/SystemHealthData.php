@@ -8,7 +8,10 @@ final readonly class SystemHealthData
         public string $apiStatus,
         public string $wordpressConnection,
         public int $storageUsedPercent,
-        public int $backgroundQueuePending,
-        public string $backgroundQueueStatus,
+        public string $queueDriver,
+        public ?int $queuePending,
+        public int $queueFailed,
+        public ?int $queueOldestPendingSeconds,
+        public string $queueStatus,
     ) {}
 }

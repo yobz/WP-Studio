@@ -629,6 +629,49 @@ data, and didn't belong under a "mock service" label.
 pages carrying entirely new real-data content (`/dashboard`,
 `/settings`) returned zero violations.
 
+## Background Job & Queue Platform (Milestone 11)
+
+**Content sync is asynchronous now — the exact seam Milestone 10 named
+in advance.** `POST /sites/{site}/sync` dispatches
+`SyncWordPressPostsJob` instead of blocking the request; the endpoint
+returns `202 Accepted` with `{status: "queued"}` immediately. Full
+reasoning, retry/backoff/uniqueness design, and the security review in
+`docs/adr/0009-background-job-platform.md`.
+
+**A reusable job pattern, proven by a second consumer, not just
+asserted reusable.** `RefreshSiteMetadataJob` shares the same shape
+(retries, backoff, per-site uniqueness) as the content-sync job and is
+consumed by a new daily Scheduler task refreshing metadata for every
+connected site — deliberately *not* wired into the existing manual
+"Refresh Metadata" button, since that action is fast and bounded
+enough that synchronous, immediate feedback is still the right UX.
+Both jobs use Laravel's existing `database` queue driver — configured
+since Milestone 1, no new infrastructure dependency.
+
+**System Health's queue metrics are real now.** A new
+`QueueHealthChecker` (mirroring the existing `DatabaseHealthChecker`)
+reports real `pending`/`failed` counts from the `jobs`/`failed_jobs`
+tables and a `degraded` status derived from actual failed-job
+presence — verified live in this milestone's own browser verification
+against a genuinely failed sync job, not just asserted in tests.
+
+**A verified, not assumed, credential-security property.** Traced
+Laravel's `SerializesModels` behavior directly: a job's model
+properties are persisted into the queue payload as a class name plus
+primary key only, re-fetched fresh on execution. `Site.credential` is
+never eager-loaded onto a job's `Site` property, so the encrypted
+WordPress Application Password never enters the `jobs` table's
+payload column at any point.
+
+**Frontend: polling, not WebSockets — the seam is isolated to two
+hooks.** `useSite`/`useSyncStatus` poll every 2 seconds only while the
+underlying resource's status is `syncing`, stopping automatically once
+it settles. `SyncButton` no longer shows created/updated/skipped
+counts (that synchronous response shape no longer exists); the site's
+own status badge and `SyncSummary` card reflect live progress instead.
+A future real-time push mechanism would only ever touch these two
+hooks — no component or backend contract would need to change.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -709,19 +752,19 @@ pages carrying entirely new real-data content (`/dashboard`,
   by design). Storing full content ahead of an actual editing/
   Publishing feature needing it would be speculative scope; see
   `docs/adr/0008-content-synchronization.md`'s Rejected Alternatives.
-- Content sync is fully synchronous — a single `POST .../sync` request
-  blocks until every page of posts is fetched and persisted, bounded
-  at 20 pages (2,000 posts) per call as a safety cap, not a real
-  product limit (Milestone 10, by design). Named as the concrete seam
-  Milestone 11 (Background Jobs & Queues) replaces; see the ADR's
-  Future Evolution section.
+- ~~Content sync is fully synchronous~~ **Resolved, Milestone 11** —
+  `POST .../sync` now dispatches a queued job and returns immediately.
+  The 20-page (2,000-post) safety cap itself remains, now as a bound
+  on the async job's own execution rather than on a blocking request;
+  see `docs/adr/0009-background-job-platform.md`.
 - `WordPressPostMapper::upsert()` runs one lookup query per WordPress
   item rather than a batch operation — up to ~100 queries per page at
   today's `per_page=100` (Milestone 10, by design, not yet a measured
   problem at real usage). See the ADR's Performance section.
-- System Health's `backgroundQueue` is an honest, hardcoded placeholder
-  (`0` pending, `operational`) — no real queue exists yet (Milestone
-  10.1, by design; Milestone 11 is the real implementation).
+- ~~System Health's `backgroundQueue` is an honest, hardcoded
+  placeholder~~ **Resolved, Milestone 11** — real `pending`/`failed`
+  counts and a derived `degraded`/`operational` status, read from the
+  actual `jobs`/`failed_jobs` tables.
 - Settings is real but read-only — genuine workspace/user data, no
   editable preferences, no `PATCH` endpoint (Milestone 10.1, by
   design). No product decision yet about what a user should be able to
@@ -736,10 +779,24 @@ pages carrying entirely new real-data content (`/dashboard`,
   dedicated activity-log table (Milestone 10.1, by design) — no such
   table exists; the feed is derived live from existing `Post`/`Site`
   timestamps. Fine at today's real usage.
+- No process supervision keeps `queue:work` running in any environment
+  today (Milestone 11, by design) — a real deployment needs Supervisor
+  or equivalent; deferred to Milestone 19 (Cloud Deployment & Security
+  Hardening).
+- `RefreshSiteMetadataJob` is not wired to the existing manual
+  "Refresh Metadata" button, which stays synchronous by design
+  (Milestone 11) — that action is fast/bounded enough that immediate
+  feedback is still the right UX; the job is reused instead by the new
+  daily Scheduler task. See `docs/adr/0009-background-job-platform.md`.
+- `job_batches` (Laravel's default queue-batching table) is
+  provisioned but unused (Milestone 11, by design) — nothing yet
+  dispatches a set of jobs needing combined completion tracking; a
+  real candidate once a bulk "sync every site in a workspace" action
+  exists.
 
 ## Status
 
-Milestone 10.1 (API Completion & Frontend Migration) complete. See
+Milestone 11 (Background Job & Queue Platform) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

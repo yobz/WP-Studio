@@ -7,7 +7,7 @@ use App\Models\Site;
 use App\Models\SiteCredential;
 use Illuminate\Support\Facades\Http;
 
-it('syncs posts from a connected WordPress site, skipping trashed posts', function () {
+it('queues a sync and, once run, imports posts from a connected WordPress site, skipping trashed posts', function () {
     [, $workspace] = actingAsWorkspaceMember();
     $site = Site::factory()->for($workspace)->create();
     SiteCredential::factory()->for($site)->create();
@@ -15,18 +15,13 @@ it('syncs posts from a connected WordPress site, skipping trashed posts', functi
 
     $response = $this->postJson("/api/v1/sites/{$site->id}/sync");
 
-    $response->assertOk()->assertJson([
+    $response->assertStatus(202)->assertJson([
         'success' => true,
-        'data' => [
-            'content_type' => 'post',
-            'created' => 2,
-            'updated' => 0,
-            'skipped' => 0,
-            'failed' => 0,
-        ],
+        'data' => ['status' => 'queued', 'site_id' => $site->id],
     ]);
     expect(Post::query()->where('site_id', $site->id)->count())->toBe(2);
     expect(Post::query()->where('wordpress_post_id', 103)->exists())->toBeFalse();
+    expect($site->fresh()->status)->toBe(SiteStatus::Connected);
 });
 
 it('maps WordPress post fields onto the local schema correctly', function () {
@@ -35,7 +30,7 @@ it('maps WordPress post fields onto the local schema correctly', function () {
     SiteCredential::factory()->for($site)->create();
     fakeWordPressPostsCollection();
 
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 
     $published = Post::query()->where('wordpress_post_id', 101)->sole();
     expect($published->title)->toBe('Hello World')
@@ -55,12 +50,9 @@ it('is idempotent — re-syncing unchanged posts does not create duplicates or r
     SiteCredential::factory()->for($site)->create();
     fakeWordPressPostsCollection();
 
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
-    $response = $this->postJson("/api/v1/sites/{$site->id}/sync");
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 
-    $response->assertOk()->assertJson([
-        'data' => ['created' => 0, 'updated' => 0, 'skipped' => 2],
-    ]);
     expect(Post::query()->where('site_id', $site->id)->count())->toBe(2);
 });
 
@@ -93,13 +85,9 @@ it('detects an update when WordPress content changes and updates the existing ro
             ], 200, ['X-WP-TotalPages' => '1']),
     ]);
 
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 
-    $response = $this->postJson("/api/v1/sites/{$site->id}/sync");
-
-    $response->assertOk()->assertJson([
-        'data' => ['created' => 0, 'updated' => 1, 'skipped' => 0],
-    ]);
     expect(Post::query()->where('site_id', $site->id)->count())->toBe(1);
     expect(Post::query()->where('wordpress_post_id', 101)->sole()->title)
         ->toBe('Hello World (Updated)');
@@ -141,7 +129,7 @@ it('lets any workspace member trigger a sync, not just owners/admins', function 
     SiteCredential::factory()->for($site)->create();
     fakeWordPressPostsCollection();
 
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 });
 
 it('reports sync status reflecting the current synced-post count', function () {
@@ -149,7 +137,7 @@ it('reports sync status reflecting the current synced-post count', function () {
     $site = Site::factory()->for($workspace)->create();
     SiteCredential::factory()->for($site)->create();
     fakeWordPressPostsCollection();
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 
     $response = $this->getJson("/api/v1/sites/{$site->id}/sync-status");
 
@@ -168,7 +156,7 @@ it('lists synced posts through the existing posts index endpoint, scoped to the 
     $site = Site::factory()->for($workspace)->create();
     SiteCredential::factory()->for($site)->create();
     fakeWordPressPostsCollection();
-    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertOk();
+    $this->postJson("/api/v1/sites/{$site->id}/sync")->assertStatus(202);
 
     $response = $this->getJson("/api/v1/posts?site_id={$site->id}");
 

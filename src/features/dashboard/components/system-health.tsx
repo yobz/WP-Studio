@@ -72,7 +72,10 @@ function SystemHealth() {
               <Typography variant="body">Background Queue</Typography>
               <div className="flex items-center gap-2">
                 <Typography variant="caption">
-                  {health.backgroundQueue.pending} pending
+                  {health.backgroundQueue.pending ?? "—"} pending
+                  {health.backgroundQueue.failed > 0
+                    ? ` · ${health.backgroundQueue.failed} failed`
+                    : ""}
                 </Typography>
                 <StatusBadge
                   status={

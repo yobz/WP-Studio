@@ -1,8 +1,9 @@
 "use client";
 
-import type * as React from "react";
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
@@ -14,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Typography } from "@/components/ui/typography";
 import { SITE_STATUS_META } from "@/features/dashboard/utils/status-meta";
 import { useSite } from "@/features/wordpress/hooks/use-site";
+import { sitePostsQueryKey } from "@/features/wordpress/hooks/use-site-posts";
 import {
   useDeleteSite,
   useDisconnectSite,
@@ -45,6 +47,7 @@ function DetailField({
 
 function SiteDetail({ siteId }: SiteDetailProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     data: site,
     isPending,
@@ -56,6 +59,15 @@ function SiteDetail({ siteId }: SiteDetailProps) {
   const refresh = useRefreshMetadata();
   const disconnect = useDisconnectSite();
   const deleteSite = useDeleteSite();
+
+  const wasSyncingRef = React.useRef(false);
+  React.useEffect(() => {
+    const isSyncing = site?.status === "syncing";
+    if (wasSyncingRef.current && !isSyncing) {
+      queryClient.invalidateQueries({ queryKey: sitePostsQueryKey(siteId) });
+    }
+    wasSyncingRef.current = isSyncing;
+  }, [site?.status, siteId, queryClient]);
 
   if (isPending) {
     return <LoadingState message="Loading site…" className="min-h-[50vh]" />;
@@ -100,7 +112,7 @@ function SiteDetail({ siteId }: SiteDetailProps) {
             >
               View Posts
             </Button>
-            <SyncButton siteId={site.id} />
+            <SyncButton siteId={site.id} syncing={site.status === "syncing"} />
             <Button
               variant="outline"
               size="sm"

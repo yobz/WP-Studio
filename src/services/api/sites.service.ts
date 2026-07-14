@@ -31,15 +31,9 @@ export interface ConnectSitePayload {
   application_password: string;
 }
 
-export interface SyncResult {
-  content_type: string;
-  created: number;
-  updated: number;
-  skipped: number;
-  failed: number;
-  errors: { wordpress_id: number | null; message: string }[];
-  started_at: string;
-  finished_at: string;
+export interface SyncQueuedResponse {
+  status: "queued";
+  site_id: number;
 }
 
 export interface SyncStatistics {
@@ -92,8 +86,8 @@ export async function deleteSite(id: number): Promise<void> {
   await apiFetch<null>(`/api/v1/sites/${id}`, { method: "DELETE" });
 }
 
-export async function syncSite(id: number): Promise<SyncResult> {
-  return apiFetch<SyncResult>(`/api/v1/sites/${id}/sync`, {
+export async function syncSite(id: number): Promise<SyncQueuedResponse> {
+  return apiFetch<SyncQueuedResponse>(`/api/v1/sites/${id}/sync`, {
     method: "POST",
   });
 }
