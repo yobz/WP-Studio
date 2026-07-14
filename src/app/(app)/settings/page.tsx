@@ -1,20 +1,14 @@
-import { Settings } from "lucide-react";
-
-import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
+import { SettingsSummary } from "@/features/settings/components/settings-summary";
 
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Settings"
-        description="Manage your account, workspace, and preferences."
+        description="Your workspace and account at a glance. Editable preferences are coming in a future update."
       />
-      <EmptyState
-        icon={Settings}
-        title="No settings yet"
-        description="Account and workspace settings will live here."
-      />
+      <SettingsSummary />
     </div>
   );
 }

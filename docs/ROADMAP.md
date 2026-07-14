@@ -148,16 +148,32 @@ real data, and a real connection to a real WordPress site.
       synchronous, named as the exact seam Milestone 11 replaces —
       queues/background jobs/scheduled sync explicitly deferred. See
       `docs/adr/0008-content-synchronization.md`.
-- [ ] **10.1. API Completion & Frontend Migration** — This slot's
+- [x] **10.1. API Completion & Frontend Migration** — This slot's
       original Milestone 10 scope, displaced by the redefinition above
-      and preserved here rather than dropped. Migrate the remaining
-      seven dashboard widgets off `src/services/mock/` onto real
-      endpoints, following the pattern Milestones 6–7 established
-      (`docs/adr/0004-backend-foundation.md`'s Future Implications).
-      Add pagination to the `sites`/`posts` index endpoints (a named
-      gap since Milestone 7). Give `analytics`/`settings` real,
-      minimal-but-genuine logic where the domain doesn't need a
-      dedicated future milestone to design properly.
+      and completed here. Audited all six remaining mocked dashboard
+      widgets individually rather than migrating uniformly: Recent
+      Activity, Analytics Preview, Recent Drafts, and System Health
+      became real; Quick Actions became half-real (two of four actions
+      now navigate to real destinations, two stay honestly disabled);
+      AI Assistant Preview stays deliberately mocked (Milestone 14's
+      job). New real endpoints — `GET /dashboard/activity` (derived
+      from existing `Post`/`Site` columns, no new table),
+      `GET /analytics` (aggregates the existing `AnalyticsSnapshot`
+      table), `GET /system-health` (a shared `DatabaseHealthChecker`
+      extracted from `HealthController`, real `Site`-derived
+      connection/storage status, an honest placeholder for the
+      not-yet-built background queue), `GET /settings` (real
+      workspace/user data, deliberately read-only — no product
+      decision yet about what's editable). `IndexPostsRequest` gained
+      one new accepted `status=unpublished` value reusing the existing
+      `Post::scopeUnpublished()` scope for Recent Drafts, instead of a
+      parallel endpoint. `src/services/mock/` deleted entirely.
+      Pagination on `sites`/`posts` index endpoints was reviewed again
+      and deliberately deferred — still needs its own page-size/UI
+      decision, tangential to this milestone's actual objective. 95
+      backend tests passing (up from 83); zero `axe-core` violations
+      on the two pages carrying new real-data content. See
+      `docs/MILESTONE_REPORT_M10_1.md`.
 
 ## Release v0.9 — Async, Extensibility & Quality
 

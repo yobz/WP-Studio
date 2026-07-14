@@ -16,7 +16,10 @@ class IndexPostsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['sometimes', Rule::enum(PostStatus::class)],
+            'status' => [
+                'sometimes',
+                Rule::in([...array_column(PostStatus::cases(), 'value'), 'unpublished']),
+            ],
             'site_id' => ['sometimes', 'integer', 'exists:sites,id'],
         ];
     }

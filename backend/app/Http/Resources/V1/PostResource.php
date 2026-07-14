@@ -12,6 +12,7 @@ class PostResource extends JsonResource
         return [
             'id' => $this->id,
             'site_id' => $this->site_id,
+            'site_name' => $this->site->name,
             'title' => $this->title,
             'status' => $this->status->value,
             'published_at' => $this->published_at?->toIso8601String(),

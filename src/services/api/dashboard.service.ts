@@ -10,6 +10,18 @@ export interface DashboardSummary {
   monthly_visitors_trend: number | null;
 }
 
+export interface ApiActivityItem {
+  id: string;
+  type: "post-published" | "draft-created" | "site-connected";
+  title: string;
+  site_name: string;
+  timestamp: string;
+}
+
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch<DashboardSummary>("/api/v1/dashboard/summary");
+}
+
+export async function getRecentActivity(): Promise<ApiActivityItem[]> {
+  return apiFetch<ApiActivityItem[]>("/api/v1/dashboard/activity");
 }

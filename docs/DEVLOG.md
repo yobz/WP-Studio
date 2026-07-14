@@ -1,5 +1,104 @@
 # Devlog
 
+## 2026-07-14 — Milestone 10.1: API Completion & Frontend Migration
+
+The last mock data left the frontend — deliberately, one widget at a
+time, not as a uniform find-and-replace. `src/services/mock/` no
+longer exists. This milestone is both a feature milestone (four new
+real backend domains) and a technical-debt milestone (a Future
+Backlog item flagged across three prior reviews, closed).
+
+**Audited six widgets individually, not migrated uniformly.** The
+real question per widget was never "swap the data source" — it was
+"does real data already exist," "can it be derived from data that
+already exists without a new table," or "is there honestly nothing
+real to migrate to yet." Four different answers, four different
+outcomes: Analytics Preview and System Health had real underlying
+data ready to aggregate; Recent Activity had no persisted event log,
+so it's derived live instead of newly logged; Recent Drafts reused an
+existing model scope; Quick Actions turned out to be two actions with
+real destinations and two without, wearing one component; AI
+Assistant Preview had nothing real to migrate to and stays mocked,
+unchanged since Milestone 5/7's own deferral.
+
+**Recent Activity, derived from three real queries, not a new
+table.** `DashboardService::recentActivity()` composes recently
+published posts, recently created drafts, and recently connected
+sites — straight from `Post.published_at`/`created_at` and
+`Site.last_connected_at`, columns that already exist and are already
+authoritative — merges the three result sets, sorts by recency, and
+returns the top N. No activity-log table was built; those timestamps
+already say everything the feed needs. Accepted, named trade-off:
+three queries per request instead of one, fine at today's real usage
+(see Engineering Journal).
+
+**Analytics Preview reuses the exact table the Dashboard trend
+calculation already uses.** `AnalyticsSnapshot` (built Milestone 7 for
+the Dashboard summary's period-over-period trend) now also backs a
+second, independent chart with a different time-range shape — the
+same historical data, aggregated two different ways for two different
+widgets, not a second data source built to match the mock's old shape.
+
+**System Health: three real signals, one honest placeholder.**
+`apiStatus` and `wordpressConnection` are real (a shared
+`DatabaseHealthChecker`, extracted from `HealthController` to close a
+duplication finding rather than copy its check inline, and real
+`Site.status` values across the workspace). `storageUsedPercent` is a
+real aggregate of `Site.storage_used_mb`/`storage_limit_mb`.
+`backgroundQueue` stays hardcoded (`0` pending, `operational`) —
+deliberately, since no real queue exists until Milestone 11, and
+simulating a metric for a system that doesn't exist yet would be
+dishonest, not "more complete."
+
+**Recent Drafts: one new accepted query value, not a new endpoint.**
+`IndexPostsRequest` now accepts `status=unpublished` alongside the
+real `PostStatus` enum values; `PostController::index()` branches to
+the already-existing `Post::scopeUnpublished()` scope. Same endpoint,
+same Policy, same tenant-isolation guarantees the existing tests
+already proved — no parallel "recent drafts" route. `PostResource`
+gained `site_name` (eager-loaded everywhere `Post` is returned, no new
+N+1) so the widget never needs a second request to know which site a
+draft belongs to.
+
+**Settings: real data, deliberately not editable.** `GET /settings`
+returns genuine workspace name/slug/member count and user name/email/
+role instead of "not yet implemented" — but there's no form and no
+`PATCH` endpoint. Building an editable-preferences feature now would
+mean guessing what a user should be able to change, with no product
+decision behind it yet — the same deferred-scope discipline already
+applied to Registration (Milestone 8) and the "AI Jobs" table
+(Milestone 7).
+
+**Quick Actions, honestly split.** "Connect WordPress Site" and "View
+Analytics" now navigate to `/wordpress` and `/analytics` respectively
+— real destinations that already exist. "New Post" and "Generate AI
+Draft" stay genuinely `disabled` — no post-creation UI and no AI
+backend exist yet, so there's nothing real to point them at.
+`mockQuickActions` moved out of the (now-deleted) `services/mock/`
+into the component itself, since it was always static UI
+configuration, not simulated API data — it never belonged under a
+"mock service" label in the first place.
+
+**Pagination reviewed again, deliberately deferred again.** A named
+Future Backlog item since Milestone 7. Reviewed as part of this
+milestone's own technical-debt sweep and left open — it still needs
+its own real page-size/UI decision, and this milestone's actual
+objective (mock-to-real migration) didn't depend on it. Named
+explicitly in the report, not silently dropped a second time.
+
+**Validation.** Backend: 95 Pest tests passing (up from 83), 12 new,
+covering every new endpoint plus the `unpublished` status filter and
+`site_name` field. Frontend: typecheck/lint/build all pass. A live
+`axe-core` pass against `/dashboard` and `/settings` — the two pages
+carrying entirely new real-data content — returned zero violations on
+both. Verified live in a production-build browser: every widget
+renders real data with no console errors, both real Quick Actions
+links navigate correctly, and Settings shows the seeded workspace's
+actual name/slug/member count and the logged-in user's real name/
+email/role.
+
+---
+
 ## 2026-07-14 — Milestone 10: Content Synchronization Platform
 
 The platform reads real content back from a connected WordPress site

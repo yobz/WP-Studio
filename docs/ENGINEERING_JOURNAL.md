@@ -57,28 +57,39 @@ items are added, resolved, or reprioritized; not a chronological log
   the specific risk this item flagged (`/dashboard` wrongly
   prefix-matching a future `/dashboard-settings`) is avoided by the
   trailing slash.
-- **Recent Drafts' deterministic failure is module state, not
-  request state** (found Milestone 5). Resets on full page reload but
-  not on client-side navigation within the app — fine for demoing the
-  pattern once, but anyone navigating away and back mid-session won't
-  see the error state repeat. Not worth solving for mock data; revisit
-  if the real backend needs a similar demo/staging failure-injection
-  mode.
-- **Six of nine dashboard widgets remain on the mock service layer**
-  (found Milestone 5; KPI Cards migrated Milestone 6, WordPress
-  Overview migrated Milestone 7 — see
-  [[0005-domain-model]](adr/0005-domain-model.md)). The remaining six
-  (Recent Activity, Analytics Preview, Recent Drafts, System Health,
-  Quick Actions, AI Assistant Preview) migrate the same way, one at a
-  time, as their respective backend domains get real logic.
+- ~~**Recent Drafts' deterministic failure is module state, not
+  request state**~~ **Resolved, Milestone 10.1.** Recent Drafts now
+  reads real data (`GET /posts?status=unpublished`) — the contrived
+  mock failure-injection this item described no longer exists to have
+  the bug. Real network/API failures now drive the Error state
+  instead, the same as every other real-data widget.
+- ~~**Six of nine dashboard widgets remain on the mock service
+  layer**~~ **Resolved, Milestone 10.1.** The remaining six (Recent
+  Activity, Analytics Preview, Recent Drafts, System Health, Quick
+  Actions, AI Assistant Preview) were each reviewed individually.
+  Four became real (Recent Activity derived from `Post`/`Site` data;
+  Analytics Preview from `AnalyticsSnapshot`; Recent Drafts from
+  `Post::scopeUnpublished()`; System Health from real DB/Site/storage
+  checks). Quick Actions is half-real (two of four actions now
+  navigate to real destinations; the other two stay honestly disabled
+  since no real target exists for them yet). AI Assistant Preview
+  stays deliberately mocked — no real AI provider integration exists,
+  unchanged from its Milestone 5/7 deferral (Milestone 14's job). See
+  `docs/MILESTONE_REPORT_M10_1.md`.
 - **Sites/Posts index endpoints have no pagination** (found Milestone
   7, by design — see the ADR's Performance section). Fine at today's
   seeded volume; a real gap once a workspace has hundreds of posts.
   Needs a real page-size decision before implementing, not a reflexive
-  default. **Update, Milestone 10:** the new Posts list on
+  default. **Update, Milestone 10:** the Posts list on
   `/wordpress/[id]/posts` inherits this same gap directly — it's the
   first UI actually rendering `Post` rows, so this is no longer a
-  theoretical future cost once real sync volume exists.
+  theoretical future cost once real sync volume exists. **Update,
+  Milestone 10.1:** reviewed again as part of this milestone's own
+  API-completion scope and deliberately deferred rather than
+  implemented — still needs the same real page-size/UI decision this
+  item has always named, and this milestone's actual objective (mock
+  → real migration) didn't depend on it. Not silently dropped a second
+  time; still open.
 - **Workspace deletion has no dedicated flow** (found Milestone 7, by
   design). `Workspace::delete()` today hard-deletes and cascades to
   every site/post — correct as a database constraint, but a real
@@ -124,6 +135,29 @@ items are added, resolved, or reprioritized; not a chronological log
   persisted. Storing it ahead of an actual editing/Publishing feature
   needing it would be speculative — see the ADR's Rejected
   Alternatives.
+- **System Health's `backgroundQueue` is an honest, hardcoded
+  placeholder** (found Milestone 10.1, by design). Always reports `0
+  pending` / `operational` — there's no real queue system yet
+  (Milestone 11's job), so this is deliberately not simulating a
+  metric that doesn't exist rather than a bug. Revisit the moment a
+  real queue exists to report real pending-job counts.
+- **`DashboardService::recentActivity()` runs three separate queries
+  and merges/sorts them in PHP** (found Milestone 10.1, by design).
+  No persisted "activity log" table exists — the feed is derived
+  live from `Post`/`Site` columns each request. Fine at today's real
+  usage (a handful of sites/posts per workspace, one request per
+  dashboard load); revisit with a real activity-log table only if a
+  genuine usage pattern justifies the added write-path complexity —
+  the same "don't build for scale that doesn't exist yet" reasoning
+  `docs/adr/0005-domain-model.md` already applied elsewhere.
+- **Settings is real but read-only — no editable preferences exist**
+  (found Milestone 10.1, by design). `GET /api/v1/settings` returns
+  genuine workspace/user data instead of a "not implemented" message,
+  but there's no form, no `PATCH` endpoint, and no decided answer to
+  "what should a user actually be able to change here" — the same
+  category of deferred product decision as Registration (Milestone 8)
+  and the "AI Jobs" table (Milestone 7). Build the real editable
+  feature once that decision is made, not before.
 
 ### Low Priority
 
@@ -559,6 +593,58 @@ signal is a common, easy-to-miss fragility — a hash comparison
 degrades gracefully even when the upstream signal you'd naively rely
 on turns out to be unreliable.
 
+### Milestone 10.1 (API Completion & Frontend Migration)
+
+**1. Auditing six mock widgets individually instead of applying one
+migration pattern uniformly.** *Problem:* the brief's instruction
+("eliminate mock dependencies") could be read as "migrate everything
+the same way." *Chosen solution:* reviewed each of the six remaining
+mocked widgets against what real data actually existed to back it —
+Analytics Preview and System Health had real underlying tables
+(`AnalyticsSnapshot`, `Site.storage_used_mb`) ready to aggregate;
+Recent Activity had no persisted event log, so it was built as a
+*derived* read from existing `Post`/`Site` columns instead; Quick
+Actions turned out to be two genuinely different concerns (two
+actions with real destinations, two with none) wearing one component;
+AI Assistant Preview had nothing real to migrate to at all and stayed
+mocked. *Why this matters for an interview answer:* "remove all the
+mocks" is rarely a single mechanical operation — the right questions
+per instance are "does real data already exist," "can real data be
+*derived* without a new table," and "is there honestly nothing real
+here yet," and each answer implies a different amount of new backend
+work, not a uniform migration script.
+
+**2. Choosing to derive Recent Activity from existing columns instead
+of building an event-log table.** *Problem:* a "real" activity feed
+naturally suggests persisting every event (post published, draft
+created, site connected) as its own row, the way a real audit log
+would. *Chosen solution:* no new table — `DashboardService::recentActivity()`
+queries `Post`/`Site` directly (`published_at`, `created_at`,
+`last_connected_at`) and merges three result sets in application code.
+*Why this approach:* those timestamps already exist and are already
+correct; a dedicated events table would duplicate data that's already
+authoritative elsewhere, for a feed that's read far more often than
+any hypothetical event volume would justify optimizing for. The
+explicit trade-off (three queries instead of one, merged in PHP) was
+named as accepted debt rather than solved prematurely — see Future
+Backlog.
+
+**3. Treating "should it become real" and "should it stay a
+placeholder" as equally legitimate audit outcomes, in the same
+review.** *Problem:* a milestone framed around "eliminate mocks" can
+create pressure to make everything real, including things with no
+real product decision behind them yet. *Chosen solution:* Settings
+became real-but-read-only (genuine workspace/user data, no invented
+editable-preferences feature); Notifications and the AI domain were
+reviewed and explicitly left alone, since inventing either now would
+mean guessing a product decision (what counts as a notification; what
+an AI provider integration looks like) nobody has made yet. *Why this
+matters for an interview answer:* a technical-debt-reduction milestone
+succeeding doesn't mean shipping the maximum amount of "real" — it
+means every remaining mock or placeholder has a written reason to
+still be one, the same discipline this project already applied to
+Registration (Milestone 8) and the "AI Jobs" table (Milestone 7).
+
 ---
 
 ## Resume Highlights
@@ -692,6 +778,38 @@ to real, shipped, verified work.
   build (a genuinely unreachable external host), confirming a
   synchronous failure correctly surfaces through the same error-display
   path an unrelated, previously-built feature already used.
+
+### Milestone 10.1 (API Completion & Frontend Migration)
+
+- Audited every remaining mock data source in a production frontend
+  application and converted four of six to real, tested backend
+  endpoints (traffic analytics, system health, activity feed, content
+  drafts), while deliberately and explicitly documenting why the
+  remaining two stay mocked or partially mocked — closing a
+  technical-debt item flagged across three prior engineering reviews
+  without over-building unproven functionality.
+- Designed and implemented a derived activity-feed endpoint without
+  introducing a new database table, composing existing timestamped
+  columns across two models into a unified, correctly-sorted feed —
+  avoiding both a stale mock and a premature audit-log schema.
+- Extended a real-time analytics aggregation query (built for a
+  different dashboard metric) to power a second, independent chart
+  widget with a different time-range shape, reusing the same
+  underlying historical data table rather than introducing a parallel
+  data source.
+- Extracted a duplicated health-check routine into a shared, reusable
+  service consumed by two independent endpoints, closing a real code-
+  duplication finding surfaced during a deliberate technical-debt
+  review pass rather than an ad hoc refactor.
+- Extended an existing, already-tested REST endpoint's filtering
+  capability (a single new accepted query value reusing an existing
+  Eloquent scope) instead of building a parallel endpoint, keeping the
+  authorization and tenant-isolation guarantees already proven for
+  that endpoint intact for the new use case.
+- Ran an automated accessibility audit (axe-core) against two pages
+  carrying entirely new real-data-driven content and confirmed zero
+  violations, and grew the backend automated test suite to 95 passing
+  tests with zero regressions across an eight-file backend change set.
 
 ---
 

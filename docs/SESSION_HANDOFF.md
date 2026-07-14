@@ -4,28 +4,34 @@ Where the project stands right now. Overwritten at the end of every
 session — this is a snapshot, not a history (see `docs/DEVLOG.md` for
 that). If you're starting a new session, read this first.
 
-## 2026-07-14 — End of Milestone 10 (Content Synchronization Platform)
+## 2026-07-14 — End of Milestone 10.1 (API Completion & Frontend Migration)
 
-**Milestone state.** Milestone 10 is implemented, validated, and
-documented — see `docs/MILESTONE_REPORT_M10.md` for the full
-independent review. `docs/ROADMAP.md` marks it complete (redefined
-from its prior "API Completion & Frontend Migration" scope, which is
-preserved as Milestone 10.1, not dropped). **Not yet committed** — this
-milestone's own brief requires stopping here for approval before
-starting the next one.
+**Milestone state.** Milestone 10.1 is implemented, validated, and
+documented — see `docs/MILESTONE_REPORT_M10_1.md` for the full
+independent review. `docs/ROADMAP.md` marks it complete. **Not yet
+committed** — this milestone's own brief requires stopping here for
+approval before starting Milestone 11.
 
-**M8/M9 are already committed and pushed** (from earlier in this same
-session): comment-stripping was applied across the entire M1-M9
-codebase in four separate commits, all pushed to `origin/master`.
-`git status` at the start of this milestone's work was clean; every
-file changed since is Milestone 10's own work.
+**Milestones 8, 9, and 10 are already committed and pushed** (from
+earlier in this same session). `git status` at the start of this
+milestone's work was clean; every file changed since is Milestone
+10.1's own work.
 
-**Immediate next step.** Either Milestone 10.1 (API Completion &
-Frontend Migration — the scope displaced from this slot) or Milestone
-11 (Background Jobs & Queues — the direct continuation of this
-milestone's synchronous-to-async seam) is next per `docs/ROADMAP.md`,
-but **explicitly not started** — waiting for explicit approval per the
-milestone lifecycle's standing rule.
+**The frontend no longer has any mock data source.**
+`src/services/mock/` was deleted in this milestone — every dashboard
+widget now either reads real data or is a deliberately, explicitly
+documented placeholder (Quick Actions' two no-target actions; AI
+Assistant Preview, pending Milestone 14). If a future session goes
+looking for `src/services/mock/dashboard.service.ts`, it's gone on
+purpose, not missing by accident.
+
+**Immediate next step.** Milestone 11 (Background Jobs & Queues) is
+recommended next — see this milestone's report for the reasoning (it
+retires two currently-open named placeholders: `ContentSyncService`'s
+synchronous-only operation from Milestone 10, and System Health's
+hardcoded `backgroundQueue` metric from this milestone) — but is
+**explicitly not started**, waiting for approval per the milestone
+lifecycle's standing rule.
 
 **Known live gotchas.**
 - Same PHP built-in server single-threading caveat noted since
@@ -34,36 +40,40 @@ milestone lifecycle's standing rule.
 - Verify browser-driven UI flows against a production build
   (`npm run build && npm run start`), not `npm run dev` — Fast Refresh
   interfered with client-side navigation during Milestone 8's own
-  verification (see `docs/ENGINEERING_JOURNAL.md`).
-- **New this session:** verifying client-side (App Router) navigation
-  with Playwright needs `page.goto()` or a manual URL-polling helper,
-  not `page.waitForURL()` with its default `waitUntil: 'load'` — a
-  Next.js client-side `<Link>` navigation never fires a `load` event,
-  so `waitForURL()` times out even though the navigation genuinely
-  succeeded. Worth knowing before writing the next ad hoc verification
-  script.
+  verification.
+- Next.js client-side (App Router) navigation with Playwright needs
+  `page.goto()` or a manual URL-polling helper, not
+  `page.waitForURL()` with its default `waitUntil: 'load'` (noted
+  after Milestone 10) — a client-side `<Link>` navigation never fires
+  a `load` event.
+- Playwright and `axe-core` are not project dependencies. This
+  session's ad hoc verification installed both locally with
+  `npm install --no-save playwright axe-core` and removed them
+  afterward. **New this session:** `npm install --no-save` doesn't
+  reliably guarantee the packages land in `node_modules` on the first
+  attempt in this environment — verify with `ls node_modules/<pkg>`
+  before assuming the install succeeded; a second `npm install` call
+  resolved it cleanly both times it happened.
+- **New this session:** when stopping ad hoc dev servers started
+  during verification, kill by the specific PID from
+  `netstat -ano | grep LISTENING`, never `taskkill //IM node.exe` or
+  similar — a broad by-image-name kill terminates every process with
+  that name system-wide, not just the session's own dev servers. (The
+  auto-mode classifier will correctly deny broad kills; this is the
+  reason why, not just a permission technicality.)
 - Local WordPress connection/sync testing: there is no real WordPress
-  server in this environment. `DemoDataSeeder`'s seeded sites carry a
-  dummy, non-working credential and fake `.example.com` URLs
-  specifically so "Verify Connection"/"Sync Content" against seeded
-  data fail gracefully rather than silently looking like they work —
-  expected, not a bug. This milestone's sync *success* path is
-  verified entirely by backend tests (`Http::fake()`); the *failure*
-  path was verified live in-browser against the seeded environment's
-  genuinely unreachable domain.
-- Playwright is not a project dependency — a prior session's ad hoc
-  browser verification installed it locally with
-  `npm install --no-save playwright` and removed it afterward
-  (`node_modules/playwright*`). If a future session wants live browser
-  verification again, the same temporary install is the fastest path;
-  don't add it to `package.json` unless the project decides to adopt
-  automated browser testing for real (that's Milestone 15/18's job).
+  server in this environment. `DemoDataSeeder`'s seeded sites carry
+  dummy credentials and fake `.example.com` URLs specifically so
+  connection/sync actions against seeded data fail gracefully rather
+  than silently looking like they work — expected, not a bug.
 
 **Validation status as of this session.** Frontend: `typecheck`,
-`lint`, `build` all pass — 13 routes, two new
-(`/wordpress/[id]/posts`, `/wordpress/[id]/posts/[postId]`). Backend:
-`php artisan test` — 83/83 passing (up from 73). Full sync-failure
-flow (real `WordPressConnectionException`, site flipped to
-`Connection Error`, error rendered through the existing error-display
-path) verified end-to-end in a real, production-mode browser — see
-`docs/MILESTONE_REPORT_M10.md`.
+`lint`, `build` all pass — `/settings` grew from a static placeholder
+to a real 3.61 kB client-data page. Backend: `php artisan test` —
+95/95 passing (up from 83). Live `axe-core` audit against `/dashboard`
+and `/settings` — zero violations on both. Every dashboard widget
+verified end-to-end in a real, production-mode browser showing real
+seeded data (KPI Cards, Recent Activity, Analytics Preview, Recent
+Drafts, System Health, WordPress Overview all confirmed rendering
+correctly; both real Quick Actions links confirmed navigating
+correctly) — see `docs/MILESTONE_REPORT_M10_1.md`.

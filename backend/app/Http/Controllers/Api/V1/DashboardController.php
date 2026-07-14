@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\V1\ActivityItemResource;
 use App\Http\Resources\V1\DashboardSummaryResource;
 use App\Http\Support\ApiResponse;
 use App\Services\DashboardService;
@@ -23,5 +24,12 @@ class DashboardController extends Controller
         return ApiResponse::success(
             data: new DashboardSummaryResource($summary),
         );
+    }
+
+    public function activity(): JsonResponse
+    {
+        $activity = $this->dashboard->recentActivity($this->workspaceContext->get());
+
+        return ApiResponse::success(data: ActivityItemResource::collection($activity));
     }
 }

@@ -20,7 +20,7 @@ export interface QuickAction {
 }
 
 export type ActivityType =
-  "post-published" | "draft-created" | "plugin-updated" | "ai-draft-generated";
+  "post-published" | "draft-created" | "site-connected";
 
 export interface ActivityItem {
   id: string;

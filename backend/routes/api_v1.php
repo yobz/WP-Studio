@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\PostController;
 use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\SiteController;
+use App\Http\Controllers\Api\V1\SystemHealthController;
 use App\Http\Middleware\ResolveCurrentWorkspace;
 use Illuminate\Support\Facades\Route;
 
@@ -26,6 +27,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware(ResolveCurrentWorkspace::class)->group(function () {
         Route::get('dashboard/summary', [DashboardController::class, 'summary'])
             ->name('dashboard.summary');
+        Route::get('dashboard/activity', [DashboardController::class, 'activity'])
+            ->name('dashboard.activity');
 
         Route::apiResource('sites', SiteController::class)->except(['store']);
         Route::post('sites', [SiteController::class, 'store'])
@@ -48,6 +51,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('posts', PostController::class);
 
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
+
+        Route::get('system-health', [SystemHealthController::class, 'index'])
+            ->name('system-health.index');
 
         Route::get('ai', [AiController::class, 'index'])->name('ai.index');
 

@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api-client";
 export interface ApiPost {
   id: number;
   site_id: number;
+  site_name: string;
   title: string;
   status: "draft" | "in-review" | "published";
   published_at: string | null;
@@ -21,4 +22,8 @@ export async function getSitePosts(siteId: number): Promise<ApiPost[]> {
 
 export async function getPost(id: number): Promise<ApiPost> {
   return apiFetch<ApiPost>(`/api/v1/posts/${id}`);
+}
+
+export async function getRecentDrafts(): Promise<ApiPost[]> {
+  return apiFetch<ApiPost[]>("/api/v1/posts?status=unpublished");
 }

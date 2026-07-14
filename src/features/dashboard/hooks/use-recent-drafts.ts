@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getRecentDrafts } from "@/services/mock/dashboard.service";
+import { mapPostToDraft } from "@/features/dashboard/utils/map-posts-to-drafts";
+import { getRecentDrafts } from "@/services/api/posts.service";
 
 export function useRecentDrafts() {
   return useQuery({
     queryKey: ["dashboard", "drafts"],
-    queryFn: getRecentDrafts,
-    retry: 1,
+    queryFn: async () => (await getRecentDrafts()).map(mapPostToDraft),
   });
 }

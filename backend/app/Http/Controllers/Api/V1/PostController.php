@@ -25,14 +25,20 @@ class PostController extends Controller
     {
         $workspace = $this->workspaceContext->get();
 
-        $query = Post::query()->whereIn('site_id', $workspace->sites()->pluck('id'));
+        $query = Post::query()
+            ->whereIn('site_id', $workspace->sites()->pluck('id'))
+            ->with('site:id,name');
 
         if ($siteId = $request->validated('site_id')) {
             $query->where('site_id', $siteId);
         }
 
         if ($status = $request->validated('status')) {
-            $query->where('status', $status);
+            if ($status === 'unpublished') {
+                $query->unpublished();
+            } else {
+                $query->where('status', $status);
+            }
         }
 
         return ApiResponse::success(
@@ -44,6 +50,8 @@ class PostController extends Controller
     {
         $this->authorize('view', $post);
 
+        $post->loadMissing('site:id,name');
+
         return ApiResponse::success(data: new PostResource($post));
     }
 
@@ -53,6 +61,7 @@ class PostController extends Controller
         $this->authorize('create', [Post::class, $site]);
 
         $post = $this->posts->create($site, $request->safe()->except('site_id'));
+        $post->setRelation('site', $site);
 
         return ApiResponse::success(data: new PostResource($post), status: 201);
     }
@@ -62,6 +71,7 @@ class PostController extends Controller
         $this->authorize('update', $post);
 
         $post = $this->posts->update($post, $request->validated());
+        $post->loadMissing('site:id,name');
 
         return ApiResponse::success(data: new PostResource($post));
     }

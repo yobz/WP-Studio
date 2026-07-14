@@ -573,6 +573,62 @@ the entire migration. `SiteStatus::Syncing`, present in the enum since
 Milestone 6/7 but never used until a queued job can meaningfully
 report "in progress," is the natural status that job sets.
 
+## API Completion & Frontend Migration (Milestone 10.1)
+
+**The last mock data left the frontend, deliberately, one widget at a
+time.** Redefined from this ROADMAP slot's earlier Milestone 10
+scope, displaced when Milestone 10 itself was redefined to Content
+Synchronization. Of the six dashboard widgets still on
+`src/services/mock/` (now deleted entirely), four became real backend
+endpoints; the remaining two were reviewed and kept honestly
+placeholder rather than migrated for its own sake. Full reasoning in
+`docs/MILESTONE_REPORT_M10_1.md`.
+
+**Recent Activity, derived, not logged.** `GET /api/v1/dashboard/activity`
+composes three real queries — recently published posts, recently
+created drafts, recently connected sites — directly from existing
+`Post`/`Site` columns, merged and sorted in `DashboardService`. No new
+"activity log" table exists; the timestamps already on those models
+were already authoritative.
+
+**Analytics Preview and System Health both had real data waiting.**
+Analytics Preview now aggregates the same `AnalyticsSnapshot` table
+the Dashboard summary's trend calculation already uses (Milestone 7),
+zero-filled per day across the requested range. System Health derives
+`apiStatus` from a shared `DatabaseHealthChecker` (extracted from
+`HealthController` to remove duplication), `wordpressConnection` from
+real `Site.status` values, and `storageUsedPercent` from real
+`Site.storage_used_mb`/`storage_limit_mb` sums — only `backgroundQueue`
+stays an honest, hardcoded placeholder, since no real queue exists
+until Milestone 11.
+
+**Recent Drafts reuses `Post::scopeUnpublished()`, not a new
+endpoint.** `IndexPostsRequest` accepts `status=unpublished` as a
+sentinel value alongside the real `PostStatus` enum values,
+`PostController::index()` branches to the existing scope — one
+endpoint, one Policy path, not a duplicate. `PostResource` gained a
+`site_name` field (eager-loaded everywhere it's returned) so widgets
+never need a second request to show which site a post belongs to.
+
+**Settings is real, not editable — a deliberate, named split.**
+`GET /api/v1/settings` returns genuine workspace and user data instead
+of "not yet implemented," but there's no form or `PATCH` endpoint —
+building one would mean guessing what a user should be able to change
+with no product decision behind it, the same category of deferred
+scope as Registration (Milestone 8).
+
+**Quick Actions, honestly split in two.** "Connect WordPress Site" and
+"View Analytics" now navigate to real destinations; "New Post" and
+"Generate AI Draft" stay genuinely disabled, since neither has a real
+target yet (no post-creation UI, no AI backend). `mockQuickActions`
+moved out of the now-deleted `services/mock/` into the component
+itself — it was always static UI configuration, not simulated API
+data, and didn't belong under a "mock service" label.
+
+**Zero accessibility regressions.** An `axe-core` pass against both
+pages carrying entirely new real-data content (`/dashboard`,
+`/settings`) returned zero violations.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -602,12 +658,12 @@ report "in progress," is the natural status that job sets.
   prefix (`pathname === item.href || pathname.startsWith(item.href +
   "/")`), not a bare `startsWith`. See
   `docs/adr/0002-product-shell.md`.
-- Six of nine dashboard widgets are still mocked (KPI Cards and
-  WordPress Overview are real as of Milestones 6–7). Recent Drafts'
-  error demo is module-scoped (resets on full page reload, not
-  client-side navigation) — a known, accepted quirk of demoing a
-  deterministic failure against mock data; see
-  `docs/ENGINEERING_JOURNAL.md`.
+- ~~Six of nine dashboard widgets are still mocked~~ **Resolved,
+  Milestone 10.1** — every widget now either reads real data or is a
+  deliberately, explicitly documented placeholder (Quick Actions'
+  two no-target actions; AI Assistant Preview, pending Milestone 14).
+  `src/services/mock/` no longer exists. See
+  `docs/MILESTONE_REPORT_M10_1.md`.
 - AI Assistant Preview has no backend — `Generate` is intentionally
   disabled. Future integration point documented inline in
   `src/features/dashboard/components/ai-assistant-preview.tsx`; no
@@ -663,10 +719,27 @@ report "in progress," is the natural status that job sets.
   item rather than a batch operation — up to ~100 queries per page at
   today's `per_page=100` (Milestone 10, by design, not yet a measured
   problem at real usage). See the ADR's Performance section.
+- System Health's `backgroundQueue` is an honest, hardcoded placeholder
+  (`0` pending, `operational`) — no real queue exists yet (Milestone
+  10.1, by design; Milestone 11 is the real implementation).
+- Settings is real but read-only — genuine workspace/user data, no
+  editable preferences, no `PATCH` endpoint (Milestone 10.1, by
+  design). No product decision yet about what a user should be able to
+  change; building the form ahead of that decision would be
+  speculative scope.
+- Sites/Posts index endpoints still have no pagination (named since
+  Milestone 7, reviewed again and deliberately deferred in Milestone
+  10.1 — real page-size/UI decision still needed, not a reflexive
+  default).
+- `DashboardService::recentActivity()` runs three separate queries and
+  merges them in application code rather than one query against a
+  dedicated activity-log table (Milestone 10.1, by design) — no such
+  table exists; the feed is derived live from existing `Post`/`Site`
+  timestamps. Fine at today's real usage.
 
 ## Status
 
-Milestone 10 (Content Synchronization Platform) complete. See
+Milestone 10.1 (API Completion & Frontend Migration) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

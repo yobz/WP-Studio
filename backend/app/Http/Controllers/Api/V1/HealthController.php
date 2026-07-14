@@ -4,15 +4,18 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Support\ApiResponse;
+use App\Support\DatabaseHealthChecker;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Throwable;
 
 class HealthController extends Controller
 {
+    public function __construct(
+        private readonly DatabaseHealthChecker $databaseHealthChecker,
+    ) {}
+
     public function __invoke(): JsonResponse
     {
-        $database = $this->checkDatabase();
+        $database = $this->databaseHealthChecker->check();
 
         $healthy = $database['status'] === 'ok';
 
@@ -25,19 +28,5 @@ class HealthController extends Controller
             ],
             status: $healthy ? 200 : 503,
         );
-    }
-
-    /**
-     * @return array{status: string, message?: string}
-     */
-    private function checkDatabase(): array
-    {
-        try {
-            DB::connection()->getPdo();
-
-            return ['status' => 'ok'];
-        } catch (Throwable) {
-            return ['status' => 'error', 'message' => 'Database connection failed.'];
-        }
     }
 }

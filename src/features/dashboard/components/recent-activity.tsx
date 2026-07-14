@@ -5,9 +5,8 @@ import {
   AlertCircle,
   FileCheck2,
   FileEdit,
+  Globe,
   History,
-  PackageCheck,
-  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,8 +23,7 @@ import { useNotificationStore } from "@/store/notification-store";
 const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
   "post-published": FileCheck2,
   "draft-created": FileEdit,
-  "plugin-updated": PackageCheck,
-  "ai-draft-generated": Sparkles,
+  "site-connected": Globe,
 };
 
 function RecentActivity() {
