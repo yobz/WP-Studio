@@ -2,13 +2,17 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, Search, X } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { SearchInput } from "@/components/common/search-input";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  useCurrentUser,
+  useLogout,
+} from "@/features/authentication/hooks/use-auth";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -39,12 +43,23 @@ import { getNavTitle } from "@/lib/navigation";
 import { useNotificationStore } from "@/store/notification-store";
 
 function AppHeader() {
+  const router = useRouter();
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
   const [searchValue, setSearchValue] = React.useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false);
   const notificationCount = useNotificationStore((state) => state.count);
   const clearNotifications = useNotificationStore((state) => state.clear);
+  const { data: user } = useCurrentUser();
+  const logout = useLogout();
+
+  function handleSignOut() {
+    logout.mutate(undefined, {
+      onSuccess: () => router.replace("/login"),
+    });
+  }
+
+  const initial = user?.name.charAt(0).toUpperCase() ?? "U";
 
   return (
     <header className="border-border flex h-14 shrink-0 items-center gap-3 border-b px-4">
@@ -185,19 +200,25 @@ function AppHeader() {
               }
             >
               <Avatar size="sm">
-                <AvatarFallback>U</AvatarFallback>
+                <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuGroup>
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {user?.email ?? "My Account"}
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem disabled>Profile</DropdownMenuItem>
                 <DropdownMenuItem render={<Link href="/settings" />}>
                   Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled variant="destructive">
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={logout.isPending}
+                  onClick={handleSignOut}
+                >
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuGroup>

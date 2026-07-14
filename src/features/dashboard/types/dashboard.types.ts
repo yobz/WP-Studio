@@ -1,11 +1,3 @@
-/**
- * Dashboard domain types. Deliberately plain data — no icon/component
- * references — so these shapes can be satisfied by a real Laravel REST
- * response later without changing anything in this file. Presentation
- * concerns (which icon represents which KPI, etc.) are mapped in the
- * component layer, not here.
- */
-
 export interface Kpi {
   id:
     | "connected-sites"
@@ -38,7 +30,7 @@ export interface ActivityItem {
   timestamp: string;
 }
 
-export type SiteStatus = "connected" | "syncing" | "disconnected";
+export type SiteStatus = "connected" | "syncing" | "disconnected" | "error";
 
 export interface WordPressOverview {
   siteName: string;

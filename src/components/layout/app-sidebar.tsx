@@ -53,16 +53,9 @@ function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  // Exact match is correct for every route today (all
-                  // top-level, one segment deep). Once nested/detail
-                  // routes exist (e.g. a future `/content/[id]`), this
-                  // will need to become prefix- or segment-aware so the
-                  // parent nav item still highlights — see
-                  // docs/adr/0002-product-shell.md. Not changed now:
-                  // there's no nested route to test it against yet, and
-                  // guessing the right matching rule ahead of a real
-                  // need risks getting it wrong.
-                  const isActive = pathname === item.href;
+                  const isActive =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`);
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton

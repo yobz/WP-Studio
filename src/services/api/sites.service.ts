@@ -1,20 +1,33 @@
 import { apiFetch } from "@/lib/api-client";
 
-/**
- * Mirrors backend/app/Http/Resources/V1/SiteResource.php.
- */
 export interface ApiSite {
   id: number;
   workspace_id: number;
   name: string;
-  status: "connected" | "syncing" | "disconnected";
+  url: string | null;
+  status: "connected" | "syncing" | "disconnected" | "error";
   wordpress_version: string | null;
   theme: string | null;
+  php_version: string | null;
   plugin_updates_available: number;
+  plugin_count: number | null;
+  user_count: number | null;
+  timezone: string | null;
+  language: string | null;
   storage_used_mb: number;
   storage_limit_mb: number;
+  last_connected_at: string | null;
+  last_checked_at: string | null;
+  connection_error: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface ConnectSitePayload {
+  name: string;
+  url: string;
+  wp_username: string;
+  application_password: string;
 }
 
 export async function getSites(params?: {
@@ -22,4 +35,39 @@ export async function getSites(params?: {
 }): Promise<ApiSite[]> {
   const query = params?.status ? `?status=${params.status}` : "";
   return apiFetch<ApiSite[]>(`/api/v1/sites${query}`);
+}
+
+export async function getSite(id: number): Promise<ApiSite> {
+  return apiFetch<ApiSite>(`/api/v1/sites/${id}`);
+}
+
+export async function connectSite(
+  payload: ConnectSitePayload,
+): Promise<ApiSite> {
+  return apiFetch<ApiSite>("/api/v1/sites", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function disconnectSite(id: number): Promise<ApiSite> {
+  return apiFetch<ApiSite>(`/api/v1/sites/${id}/disconnect`, {
+    method: "POST",
+  });
+}
+
+export async function verifySiteConnection(id: number): Promise<ApiSite> {
+  return apiFetch<ApiSite>(`/api/v1/sites/${id}/verify`, {
+    method: "POST",
+  });
+}
+
+export async function refreshSiteMetadata(id: number): Promise<ApiSite> {
+  return apiFetch<ApiSite>(`/api/v1/sites/${id}/refresh-metadata`, {
+    method: "POST",
+  });
+}
+
+export async function deleteSite(id: number): Promise<void> {
+  await apiFetch<null>(`/api/v1/sites/${id}`, { method: "DELETE" });
 }

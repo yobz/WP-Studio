@@ -52,6 +52,34 @@ Every milestone from M8 onward follows the same process:
 to be re-specified at the start of every session — read it once,
 follow it every time, update it if the process itself needs to change.
 
+## Core Platform Services — reuse these, don't rebuild them
+
+Before adding a new cross-cutting mechanism, check whether one of
+these already does the job. Every one of them was built once and
+extended by every milestone since, never duplicated — that's
+deliberate, and new milestones should keep it that way.
+
+**Backend**
+
+| Service | What it does | Where |
+| --- | --- | --- |
+| `ApiResponse` | The one JSON envelope every response uses | `app/Http/Support/ApiResponse.php` |
+| `ApiExceptionHandler` | Maps every exception (framework or app-thrown) to that envelope, in one place | `app/Exceptions/ApiExceptionHandler.php` |
+| `ApiException` | Base class for app-thrown exceptions — extend it for a new failure mode instead of inventing a new response shape | `app/Exceptions/ApiException.php` |
+| `CurrentWorkspaceResolver` / `ResolveCurrentWorkspace` / `CurrentWorkspaceContext` | Resolves and authorizes "the current workspace" once per request; every workspace-scoped controller/service depends on the context, never a client-supplied ID | `app/Services/CurrentWorkspaceResolver.php`, `app/Http/Middleware/ResolveCurrentWorkspace.php`, `app/Support/CurrentWorkspaceContext.php` — see `docs/adr/0006-authentication-architecture.md` |
+| `auth:sanctum` + Policies | Session auth + role-based authorization — wire `$this->authorize()` against the existing `SitePolicy`/`PostPolicy` pattern for a new resource, don't invent a new authorization mechanism | `app/Policies/`, `docs/adr/0006-authentication-architecture.md` |
+| `AssignRequestId` | Request-ID correlation on every response/log line | `app/Http/Middleware/AssignRequestId.php` |
+| `App\Services\WordPress\` | The template for any *future* external-service integration (Contracts/Client/Authentication/DTO/Exceptions/Security) — not just WordPress-specific. A future AI-provider or storage integration should follow this same shape: one contract, one HTTP client behind it, typed exceptions extending `ApiException`, DTOs for the external shape, a security-boundary check before any outbound call. See `docs/adr/0007-wordpress-integration-architecture.md`. | `app/Services/WordPress/` |
+
+**Frontend**
+
+| Service | What it does | Where |
+| --- | --- | --- |
+| `apiFetch` (`api-client.ts`) | The one place that calls the Laravel API — envelope unwrapping, CSRF handshake, credentials, centralized 401 handling. Every new service function goes through this, never a raw `fetch()`. | `src/lib/api-client.ts` |
+| TanStack Query | Owns all server state, including auth (`useCurrentUser`). Zustand is reserved for genuinely client-only, cross-cutting UI state (its one store is a notification count) — check `docs/adr/0003-dashboard-data-architecture.md` before reaching for a new store. | `src/components/common/query-provider.tsx` |
+| `ProtectedLayout` | The one auth boundary — every route under `(app)` already sits behind it | `src/components/layout/protected-layout.tsx` |
+| Feature-first services/hooks | A new resource's API types/functions belong in `src/services/api/` if 2+ features will use them (e.g. `sites.service.ts`, used by both the dashboard and the WordPress feature), or `src/features/<feature>/` if only one does | `docs/CODING_STANDARDS.md` |
+
 ## Doc map — one responsibility each
 
 | File | Owns | Does not own |

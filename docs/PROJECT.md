@@ -17,12 +17,14 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | Frontend          | Next.js 15, React 19, TypeScript     |
 | Styling           | Tailwind CSS 4, shadcn/ui (Base UI primitives), Lucide React |
 | Backend           | Laravel 12, PHP 8.2 (`backend/`, own README/ADR)  |
+| Auth              | Laravel Sanctum (cookie/session SPA auth, Milestone 8) |
 | Database          | SQLite (local dev, Milestone 6); MySQL/PostgreSQL a production candidate, not yet decided |
 | Client state      | Zustand, React Context API           |
-| Server state       | TanStack Query                       |
+| Server state       | TanStack Query (includes auth session state, Milestone 8) |
 | Forms/validation  | React Hook Form, Zod                 |
 | Tables/charts     | TanStack Table, Recharts             |
-| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 38 tests across Feature/Database/Validation/Policy, Milestones 6–7) |
+| External integrations | WordPress REST API (Application Passwords, `Illuminate\Http\Client`, Milestone 9) |
+| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 73 tests across Feature/Database/Validation/Policy/Authentication/Authorization/WordPress Integration, Milestones 6–9) |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions                       |
 
@@ -390,6 +392,119 @@ into routes).
 a real Empty state for "no connected site" (a case the mock layer's
 fixture data never needed, since it always had exactly one site).
 
+## Authentication & Authorization (Milestone 8)
+
+**Real login, at last.** Laravel Sanctum in cookie/session (SPA) mode —
+no JWTs, no bearer tokens anywhere in the frontend. `POST /api/v1/login`,
+`POST /api/v1/logout`, `GET /api/v1/user` are real; every other `/api/v1`
+route now requires an authenticated session. Full reasoning, every
+alternative considered, and the future IAM roadmap in
+`docs/adr/0006-authentication-architecture.md`.
+
+**Current Workspace Resolver.** The frontend never sends a
+`workspace_id` it has to remember to attach — `CurrentWorkspaceResolver`
+resolves "the workspace this request operates on" once per request
+(an explicit `X-Workspace-Id` header/`workspace_id` query param,
+membership-checked, or the user's earliest-joined workspace by
+default), hands it to controllers via `CurrentWorkspaceContext`
+(a `scoped()` container binding), through the `ResolveCurrentWorkspace`
+middleware. `SiteController`/`PostController`/`DashboardController` all
+depend on this instead of trusting a client-supplied ID. Designed so a
+future workspace switcher, subdomain-based tenancy, or a different
+resolution convention changes one class, not every controller.
+
+**Two real vulnerabilities closed, not just "auth added on top."**
+`DashboardService::summary()` previously aggregated every `Site` in the
+database regardless of tenant — invisible with one seeded workspace,
+a real cross-tenant leak the moment a second exists. `IndexSitesRequest`/
+`IndexPostsRequest` accepted any `workspace_id`/`site_id` with no
+membership check. Both fixed as part of this milestone — see the ADR's
+Context section for how the architecture review surfaced them.
+
+**The policy N+1 risk flagged in Milestone 7's Future Backlog is
+resolved architecturally**, not papered over with eager loading:
+`index()` actions never authorize per-row — membership in the resolved
+workspace is already guaranteed before the controller runs, so listing
+is one `WHERE workspace_id = ?` query, not N per-row Gate checks.
+
+**Frontend.** `src/lib/api-client.ts` now sends `credentials: "include"`
+on every request and handles the CSRF cookie handshake centrally (one
+choke point, like the envelope-unwrapping it already centralized).
+`useCurrentUser()` (`src/features/authentication/hooks/use-auth.ts`) —
+TanStack Query, not a Zustand store, per the same client/server-state
+split `docs/adr/0003-dashboard-data-architecture.md` already
+established — is the single source of truth for "who is logged in."
+`ProtectedLayout` is real now: a loading state while the session check
+is in flight, a redirect to `/login?redirect=<path>` on no session
+(destination preserved), the actual app otherwise. New `(auth)` route
+group (`/login`) mirrors how `(app)` is its own group. `AppHeader`'s
+user menu (previously disabled placeholders) now shows the real signed-
+in user and has a working "Sign out."
+
+**Deliberately deferred, not forgotten** — registration, workspace
+switcher UI, email verification, password reset, 2FA, social auth. Each
+is named with its specific reasoning in the ADR's Trade-offs and Future
+IAM Roadmap sections, not silently dropped.
+
+## WordPress Integration Platform (Milestone 9)
+
+**Real connections, at last.** `POST /api/v1/sites` is now a genuine
+WordPress handshake — name, URL, WordPress username, and an
+Application Password go in; `App\Services\WordPress\SiteConnectionService`
+calls the real site's REST API, and only creates a `Site` row if that
+handshake actually succeeds. Full reasoning, every alternative
+considered, and the security model in
+`docs/adr/0007-wordpress-integration-architecture.md`.
+
+**A dedicated integration layer, not logic scattered across
+controllers.** `App\Services\WordPress\` (`Contracts`, `Client`,
+`Authentication`, `DTO`, `Exceptions`, `Security`) is the only code in
+this application that ever makes an HTTP request to a WordPress site.
+`SiteController` never talks to WordPress directly — every action
+delegates to `SiteConnectionService`, which depends on
+`WordPressClientContract` (bound to `HttpWordPressClient`), never a
+concrete HTTP call.
+
+**Two vulnerabilities this feature could easily have introduced,
+closed before they existed.** Connecting to a URL a workspace member
+supplies is a request-forgery primitive without a check —
+`App\Services\WordPress\Security\UrlSafetyValidator` rejects
+non-http(s) schemes, local hostnames, and private/reserved IP
+addresses *before* any request is sent. A dedicated rate limiter
+(`wordpress-connection`, 10/minute) stops these endpoints from being
+used to issue repeated outbound requests to an arbitrary target on
+demand.
+
+**Credentials, encrypted, in their own table.** `site_credentials` is
+a separate table from `sites` — `SiteResource` never touches it, the
+Application Password is stored via Eloquent's `encrypted` cast, and
+`SiteCredential` marks it `$hidden`. Four independent layers stand
+between this data and an API response; see the ADR's Security section.
+
+**Graceful degradation, not an all-or-nothing handshake.** Two REST
+calls are load-bearing (proves the URL is really WordPress; proves the
+credential works); three more (theme, plugin count, user count) are
+individually capability-gated by WordPress itself and best-effort — an
+Application Password that isn't a full administrator's still connects
+successfully, just with those fields `null` rather than the whole
+attempt failing.
+
+**An honest accounting of what's detectable.** `wordpress_version` and
+`php_version` are real columns, always `null` today — stock WordPress
+doesn't expose either through its public REST API without a companion
+plugin. Every other metadata field (theme, plugin count, user count,
+timezone, language) comes from a real WordPress REST API response this
+integration actually calls. See the ADR's "Version Detection" section.
+
+**Frontend.** `/wordpress` is real now — a Connect Site dialog (React
+Hook Form + Zod, the established stack), a sites grid with live status
+badges, and `/wordpress/[id]` — the first dynamic/nested route in this
+app, which also resolved a standing deferred decision: `AppSidebar`'s
+`isActive` now matches a route prefix, not just an exact path (see
+`docs/ENGINEERING_JOURNAL.md`'s Future Backlog). Verify/refresh/
+disconnect/remove actions all live on the detail page, backed by
+TanStack Query mutations that invalidate the sites list on completion.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -413,16 +528,14 @@ fixture data never needed, since it always had exactly one site).
   tech can jump between directly — but a visible skip link is still a
   reasonable future enhancement once real page content (not
   placeholders) makes "long tab order to reach content" a bigger cost.
-- `isActive = pathname === item.href` (exact match) in `AppSidebar`
-  won't highlight a parent nav item once nested/detail routes exist
-  (e.g. a future `/content/[id]`). Deliberately left unchanged in
-  Milestone 4.1 — no such route exists yet to design the right matching
-  rule against, and guessing risks getting it wrong. Documented inline
-  and in `docs/adr/0002-product-shell.md` for whoever adds the first
-  nested route.
+- ~~`isActive = pathname === item.href` (exact match) in `AppSidebar`~~
+  **Resolved, Milestone 9** — `/wordpress/[id]` is the first nested
+  route this app has, and `isActive` now matches a full path segment
+  prefix (`pathname === item.href || pathname.startsWith(item.href +
+  "/")`), not a bare `startsWith`. See
+  `docs/adr/0002-product-shell.md`.
 - Six of nine dashboard widgets are still mocked (KPI Cards and
-  WordPress Overview are real as of Milestones 6–7) — no auth exists
-  yet, either on the frontend or any backend route. Recent Drafts'
+  WordPress Overview are real as of Milestones 6–7). Recent Drafts'
   error demo is module-scoped (resets on full page reload, not
   client-side navigation) — a known, accepted quirk of demoing a
   deterministic failure against mock data; see
@@ -432,12 +545,18 @@ fixture data never needed, since it always had exactly one site).
   `src/features/dashboard/components/ai-assistant-preview.tsx`; no
   "AI Jobs" table exists yet either (deliberately deferred — see
   `docs/adr/0005-domain-model.md`).
-- Every backend API route is currently unauthenticated (Milestone 8
-  adds Sanctum) — acceptable for local development against seeded demo
-  data, not for any real deployment. `SitePolicy`/`PostPolicy` contain
-  real, tested authorization logic ready to be wired in, but no route
-  calls `authorize()` yet. See `docs/adr/0004-backend-foundation.md`
-  and `docs/adr/0005-domain-model.md`.
+- No registration, workspace switcher UI, email verification, password
+  reset, 2FA, or social auth (Milestone 8) — every one deliberately
+  deferred with its own reasoning, not a gap; see
+  `docs/adr/0006-authentication-architecture.md`'s Trade-offs and Future
+  IAM Roadmap sections. Login is against `DemoDataSeeder`'s seeded user
+  only until a future onboarding milestone adds real registration.
+- Sanctum's cookie-session auth requires the frontend and backend to
+  share a registrable domain (or configured subdomains) in production —
+  works locally out of the box, but the documented Vercel + Railway
+  target is two unrelated domains today. Deliberately deferred to
+  Milestone 19 (Cloud Deployment & Security Hardening), the same
+  pattern as the SQLite→MySQL production decision.
 - No repository layer, no real analytics *events* schema (only daily
   snapshots), no pagination on Sites/Posts index endpoints, no
   dedicated workspace-deletion flow, SQLite (not a server database) in
@@ -445,10 +564,25 @@ fixture data never needed, since it always had exactly one site).
   not gaps; see both ADRs' Trade-offs sections for the reasoning
   behind each, and `docs/ENGINEERING_JOURNAL.md`'s Future Backlog for
   what each unblocks.
+- `wordpress_version` and `php_version` are always `null` on a real
+  connection (Milestone 9, by design) — stock WordPress doesn't expose
+  either through its public REST API without a companion plugin. See
+  `docs/adr/0007-wordpress-integration-architecture.md`'s "Version
+  Detection" section.
+- The SSRF guard on WordPress connection URLs checks literal IP
+  addresses against private/reserved ranges but doesn't resolve
+  hostnames to check where they actually point (Milestone 9, by
+  design) — a real, named limitation, deferred to Milestone 19 to keep
+  the check network-free and deterministic in tests. See the ADR's
+  Security section.
+- No Content Management, Publishing, or Background Jobs yet — `Site`
+  now has a real, verified connection to build on, but nothing writes
+  to a connected WordPress site yet (that's Content Management and
+  Publishing, both future milestones per `docs/ROADMAP.md`).
 
 ## Status
 
-Milestone 7 (Domain & Data Platform) complete. See `ROADMAP.md` for
-the full milestone list, `DEVLOG.md` for a running log of completed
-work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
-decisions and the reasoning behind them.
+Milestone 9 (WordPress Integration Platform) complete. See
+`ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
+of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
+architectural decisions and the reasoning behind them.

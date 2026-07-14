@@ -1,7 +1,6 @@
-import { Globe } from "lucide-react";
-
-import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
+import { ConnectSiteDialog } from "@/features/wordpress/components/connect-site-dialog";
+import { SitesList } from "@/features/wordpress/components/sites-list";
 
 export default function WordPressPage() {
   return (
@@ -9,12 +8,9 @@ export default function WordPressPage() {
       <PageHeader
         title="WordPress"
         description="Connect and manage your WordPress site integrations."
+        actions={<ConnectSiteDialog />}
       />
-      <EmptyState
-        icon={Globe}
-        title="No sites connected"
-        description="Connect your first WordPress site to start managing it from here."
-      />
+      <SitesList />
     </div>
   );
 }

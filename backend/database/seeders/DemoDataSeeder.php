@@ -8,16 +8,6 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Database\Seeder;
 
-/**
- * Seeds one realistic workspace end-to-end — enough for the Dashboard
- * summary and the Sites/Posts CRUD endpoints to return non-trivial,
- * relationally-correct data locally without a real WordPress
- * connection. Roughly mirrors the shape of the frontend's mock fixture
- * data (src/services/mock/dashboard.mock-data.ts) so the real
- * endpoints "feel" like a plausible replacement, not a coincidence.
- * Supersedes Milestone 6's `SiteSeeder`, which had no `Workspace` to
- * attach sites to.
- */
 class DemoDataSeeder extends Seeder
 {
     public function run(): void
@@ -33,11 +23,21 @@ class DemoDataSeeder extends Seeder
         $acmeBlog = Site::factory()->create([
             'workspace_id' => $workspace->id,
             'name' => 'Acme Blog',
+            'url' => 'https://acmeblog.example.com',
             'wordpress_version' => '6.7.1',
             'theme' => 'Twenty Twenty-Five',
+            'php_version' => '8.2',
             'plugin_updates_available' => 3,
+            'plugin_count' => 18,
+            'user_count' => 4,
+            'timezone' => 'America/New_York',
+            'language' => 'en_US',
             'storage_used_mb' => 2458,
             'storage_limit_mb' => 10240,
+        ]);
+        $acmeBlog->credential()->create([
+            'wp_username' => 'admin',
+            'application_password' => 'demo demo demo demo demo demo',
         ]);
 
         $acmeBlog->posts()->createMany([
@@ -54,11 +54,21 @@ class DemoDataSeeder extends Seeder
         $portfolioSite = Site::factory()->create([
             'workspace_id' => $workspace->id,
             'name' => 'Portfolio Site',
+            'url' => 'https://portfolio.example.com',
             'wordpress_version' => '6.7.1',
             'theme' => 'Astra',
+            'php_version' => '8.3',
             'plugin_updates_available' => 0,
+            'plugin_count' => 9,
+            'user_count' => 1,
+            'timezone' => 'America/Los_Angeles',
+            'language' => 'en_US',
             'storage_used_mb' => 512,
             'storage_limit_mb' => 10240,
+        ]);
+        $portfolioSite->credential()->create([
+            'wp_username' => 'admin',
+            'application_password' => 'demo demo demo demo demo demo',
         ]);
 
         $portfolioSite->posts()->createMany([
@@ -71,21 +81,18 @@ class DemoDataSeeder extends Seeder
         ]);
         $this->seedTrendingSnapshots($portfolioSite, startingVisitors: 3200, endingVisitors: 4000);
 
-        // A third "connected" site with no posts or snapshots yet, and
-        // a disconnected one — exercises the KPI/trend aggregation
-        // against a less tidy dataset than "every site has full
-        // history."
-        Site::factory()->create(['workspace_id' => $workspace->id, 'name' => 'Docs Site']);
-        Site::factory()->disconnected()->create(['workspace_id' => $workspace->id, 'name' => 'Staging Site']);
+        Site::factory()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Docs Site',
+            'url' => 'https://docs.example.com',
+        ]);
+        Site::factory()->disconnected()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Staging Site',
+            'url' => 'https://staging.example.com',
+        ]);
     }
 
-    /**
-     * 28 days of gently-trending snapshots ending "today" — two full
-     * 14-day windows, so `DashboardService` can compute a real
-     * period-over-period trend (current 14 days vs. the prior 14) with
-     * an actual non-empty baseline on both sides, not just a single
-     * point-in-time number. See docs/adr/0005-domain-model.md.
-     */
     private function seedTrendingSnapshots(Site $site, int $startingVisitors, int $endingVisitors): void
     {
         $days = 28;

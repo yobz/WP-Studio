@@ -4,19 +4,14 @@ import type {
   SiteStatus,
 } from "@/features/dashboard/types/dashboard.types";
 
-/**
- * Shared label/badge-color mapping for the two status enums that appear
- * in more than one dashboard widget (WordPress Overview and System
- * Health both display site connection status; System Health also shows
- * service status for the API and background queue).
- */
 export const SITE_STATUS_META: Record<
   SiteStatus,
   { label: string; badge: StatusBadgeStatus }
 > = {
   connected: { label: "Connected", badge: "success" },
   syncing: { label: "Syncing", badge: "warning" },
-  disconnected: { label: "Disconnected", badge: "error" },
+  disconnected: { label: "Disconnected", badge: "neutral" },
+  error: { label: "Connection Error", badge: "error" },
 };
 
 export const SERVICE_STATUS_META: Record<

@@ -5,24 +5,16 @@ namespace App\Services;
 use App\DTOs\DashboardSummaryData;
 use App\Models\AnalyticsSnapshot;
 use App\Models\Post;
-use App\Models\Site;
+use App\Models\Workspace;
 use Illuminate\Support\Carbon;
 
-/**
- * No repository layer in front of `Site`/`Post`/`AnalyticsSnapshot`
- * here, deliberately — see docs/adr/0004-backend-foundation.md's
- * "Repositories" section. These are single, simple aggregate queries
- * against Eloquent models with no swappable-data-source or
- * complex-query-composition need yet; a repository would be
- * indirection with no current benefit.
- */
 class DashboardService
 {
     private const TREND_WINDOW_DAYS = 14;
 
-    public function summary(): DashboardSummaryData
+    public function summary(Workspace $workspace): DashboardSummaryData
     {
-        $connectedSites = Site::query()->connected()->get();
+        $connectedSites = $workspace->sites()->connected()->get();
         $connectedSiteIds = $connectedSites->pluck('id');
 
         [$currentVisitors, $previousVisitors] = $this->visitorWindows($connectedSiteIds);
@@ -44,10 +36,6 @@ class DashboardService
         );
     }
 
-    /**
-     * @param  \Illuminate\Support\Collection<int, int>  $siteIds
-     * @return array{0: int, 1: int} [currentWindowVisitors, previousWindowVisitors]
-     */
     private function visitorWindows($siteIds): array
     {
         $today = Carbon::today();
@@ -71,8 +59,6 @@ class DashboardService
     private function percentChange(int $current, int $previous): ?float
     {
         if ($previous === 0) {
-            // Not "0% change" — there's nothing to compare against,
-            // which is a different, honest answer than "no change."
             return null;
         }
 

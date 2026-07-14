@@ -3,8 +3,11 @@
 use App\Models\Post;
 use App\Models\Site;
 
-it('lists posts', function () {
-    Post::factory()->count(3)->create();
+it("lists only posts belonging to the current workspace's sites", function () {
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
+    Post::factory()->for($site)->count(3)->create();
+    Post::factory()->count(2)->create();
 
     $response = $this->getJson('/api/v1/posts');
 
@@ -12,11 +15,12 @@ it('lists posts', function () {
 });
 
 it('filters posts by site_id and status', function () {
-    $site = Site::factory()->create();
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
     Post::factory()->for($site)->published()->create();
-    Post::factory()->for($site)->create(); // draft
-    Post::factory()->create(); // different site, published by default state override below
-    Post::factory()->published()->create();
+    Post::factory()->for($site)->create();
+    $otherSiteSameWorkspace = Site::factory()->for($workspace)->create();
+    Post::factory()->for($otherSiteSameWorkspace)->published()->create();
 
     $response = $this->getJson("/api/v1/posts?site_id={$site->id}&status=published");
 
@@ -24,7 +28,9 @@ it('filters posts by site_id and status', function () {
 });
 
 it('shows a single post', function () {
-    $post = Post::factory()->create();
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
+    $post = Post::factory()->for($site)->create();
 
     $response = $this->getJson("/api/v1/posts/{$post->id}");
 
@@ -34,8 +40,9 @@ it('shows a single post', function () {
     ]);
 });
 
-it('creates a post attached to a site', function () {
-    $site = Site::factory()->create();
+it('creates a post attached to a site in the current workspace', function () {
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
 
     $response = $this->postJson('/api/v1/posts', [
         'site_id' => $site->id,
@@ -51,7 +58,9 @@ it('creates a post attached to a site', function () {
 });
 
 it('updates a post', function () {
-    $post = Post::factory()->create(['title' => 'Old Title']);
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
+    $post = Post::factory()->for($site)->create(['title' => 'Old Title']);
 
     $response = $this->putJson("/api/v1/posts/{$post->id}", ['title' => 'New Title']);
 
@@ -59,7 +68,9 @@ it('updates a post', function () {
 });
 
 it('soft deletes a post, excluding it from the index but keeping the row', function () {
-    $post = Post::factory()->create();
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
+    $post = Post::factory()->for($site)->create();
 
     $response = $this->deleteJson("/api/v1/posts/{$post->id}");
 
@@ -68,8 +79,9 @@ it('soft deletes a post, excluding it from the index but keeping the row', funct
     $this->getJson('/api/v1/posts')->assertJsonCount(0, 'data');
 });
 
-it('cascade-deletes a site\'s posts when the site is force-deleted', function () {
-    $site = Site::factory()->create();
+it("cascade-deletes a site's posts when the site is force-deleted", function () {
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
     $post = Post::factory()->for($site)->create();
 
     $site->forceDelete();

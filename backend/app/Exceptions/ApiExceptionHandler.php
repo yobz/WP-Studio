@@ -9,22 +9,12 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Throwable;
 
-/**
- * Centralizes every API error response through `ApiResponse::error()`
- * so the shape is identical whether the failure is a validation error,
- * a missing route, an unhandled exception, or an application-thrown
- * `ApiException` — a frontend consumer only ever needs to handle one
- * error shape. Registered from `bootstrap/app.php`'s `withExceptions()`.
- *
- * Scoped to API requests only (`is('api/*')` or `expectsJson()`) — web
- * routes (currently just the default Laravel welcome page) keep
- * Laravel's normal HTML error rendering.
- */
 class ApiExceptionHandler
 {
     public static function register(Exceptions $exceptions): void
@@ -59,7 +49,7 @@ class ApiExceptionHandler
                 status: 401,
                 request: $request,
             ),
-            $e instanceof AuthorizationException => ApiResponse::error(
+            $e instanceof AuthorizationException, $e instanceof AccessDeniedHttpException => ApiResponse::error(
                 code: 'FORBIDDEN',
                 message: 'You are not authorized to perform this action.',
                 status: 403,
@@ -92,10 +82,6 @@ class ApiExceptionHandler
             ),
             default => ApiResponse::error(
                 code: 'INTERNAL_ERROR',
-                // Never leak the raw exception message/trace in a
-                // production response — only what's safe to show a
-                // client. The full exception is still logged normally
-                // by Laravel's default reporting, request_id included.
                 message: config('app.debug')
                     ? $e->getMessage()
                     : 'An unexpected error occurred. Please try again later.',

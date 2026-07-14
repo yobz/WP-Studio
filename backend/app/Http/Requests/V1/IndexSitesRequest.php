@@ -13,13 +13,9 @@ class IndexSitesRequest extends FormRequest
         return true;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
-            'workspace_id' => ['sometimes', 'integer', 'exists:workspaces,id'],
             'status' => ['sometimes', Rule::enum(SiteStatus::class)],
         ];
     }

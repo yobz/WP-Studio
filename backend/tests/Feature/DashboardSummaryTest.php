@@ -3,7 +3,13 @@
 use App\Models\Post;
 use App\Models\Site;
 
+it('requires authentication', function () {
+    $this->getJson('/api/v1/dashboard/summary')->assertUnauthorized();
+});
+
 it('returns a successful envelope with the expected shape', function () {
+    actingAsWorkspaceMember();
+
     $response = $this->getJson('/api/v1/dashboard/summary');
 
     $response->assertOk()
@@ -22,13 +28,16 @@ it('returns a successful envelope with the expected shape', function () {
         ->assertJson(['success' => true]);
 });
 
-it('counts only connected sites and correctly aggregates their posts', function () {
+it('counts only connected sites in the current workspace and correctly aggregates their posts', function () {
+    [, $workspace] = actingAsWorkspaceMember();
+
     $connected = Site::factory()->create([
+        'workspace_id' => $workspace->id,
         'storage_used_mb' => 1000,
         'storage_limit_mb' => 10240,
     ]);
     Post::factory()->for($connected)->published()->count(3)->create();
-    Post::factory()->for($connected)->count(2)->create(); // draft
+    Post::factory()->for($connected)->count(2)->create();
     Post::factory()->for($connected)->inReview()->create();
     $connected->analyticsSnapshots()->create([
         'snapshot_date' => today(),
@@ -37,17 +46,23 @@ it('counts only connected sites and correctly aggregates their posts', function 
         'storage_used_mb' => 1000,
     ]);
 
-    // A disconnected site's posts and visitors must not be counted.
-    $disconnected = Site::factory()->disconnected()->create([
+    $disconnectedSameWorkspace = Site::factory()->disconnected()->create([
+        'workspace_id' => $workspace->id,
         'storage_used_mb' => 5000,
         'storage_limit_mb' => 10240,
     ]);
-    Post::factory()->for($disconnected)->published()->count(10)->create();
-    $disconnected->analyticsSnapshots()->create([
+    Post::factory()->for($disconnectedSameWorkspace)->published()->count(10)->create();
+
+    $otherWorkspaceSite = Site::factory()->create([
+        'storage_used_mb' => 9999,
+        'storage_limit_mb' => 9999,
+    ]);
+    Post::factory()->for($otherWorkspaceSite)->published()->count(20)->create();
+    $otherWorkspaceSite->analyticsSnapshots()->create([
         'snapshot_date' => today(),
-        'visitors' => 9999,
+        'visitors' => 99999,
         'posts_published' => 0,
-        'storage_used_mb' => 5000,
+        'storage_used_mb' => 9999,
     ]);
 
     $response = $this->getJson('/api/v1/dashboard/summary');
@@ -57,7 +72,7 @@ it('counts only connected sites and correctly aggregates their posts', function 
         'data' => [
             'connected_sites' => 1,
             'published_posts' => 3,
-            'draft_posts' => 3, // 2 draft + 1 in-review
+            'draft_posts' => 3,
             'storage_used_mb' => 1000,
             'storage_limit_mb' => 10240,
             'monthly_visitors' => 500,
@@ -65,7 +80,9 @@ it('counts only connected sites and correctly aggregates their posts', function 
     ]);
 });
 
-it('returns zeroed values and a null trend when there are no sites at all', function () {
+it('returns zeroed values and a null trend when the current workspace has no sites at all', function () {
+    actingAsWorkspaceMember();
+
     $response = $this->getJson('/api/v1/dashboard/summary');
 
     $response->assertOk()->assertJson([
@@ -83,9 +100,9 @@ it('returns zeroed values and a null trend when there are no sites at all', func
 });
 
 it('computes a real period-over-period visitor trend from snapshot history', function () {
-    $site = Site::factory()->create();
+    [, $workspace] = actingAsWorkspaceMember();
+    $site = Site::factory()->for($workspace)->create();
 
-    // Previous 14-day window: 100/day = 1,400 total.
     foreach (range(14, 27) as $daysAgo) {
         $site->analyticsSnapshots()->create([
             'snapshot_date' => today()->subDays($daysAgo),
@@ -95,7 +112,6 @@ it('computes a real period-over-period visitor trend from snapshot history', fun
         ]);
     }
 
-    // Current 14-day window: 200/day = 2,800 total — a 100% increase.
     foreach (range(0, 13) as $daysAgo) {
         $site->analyticsSnapshots()->create([
             'snapshot_date' => today()->subDays($daysAgo),
@@ -116,6 +132,8 @@ it('computes a real period-over-period visitor trend from snapshot history', fun
 });
 
 it('sends a request id header on every response', function () {
+    actingAsWorkspaceMember();
+
     $response = $this->getJson('/api/v1/dashboard/summary');
 
     $response->assertHeader('X-Request-Id');

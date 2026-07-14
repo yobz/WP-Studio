@@ -78,19 +78,51 @@ Closes the gap between "architecture proven" (v0.7) and "the product
 actually does the thing it's named for": real login, every widget on
 real data, and a real connection to a real WordPress site.
 
-- [ ] **8. Authentication** — Laravel Sanctum SPA auth between the
-      frontend and API (`backend/config/cors.php`'s
-      `supports_credentials` and the `sanctum/csrf-cookie` CORS path are
-      already prepared for this, unused until now). Wires `auth:sanctum`
-      around `routes/api_v1.php`, adds `->authorize()` calls using the
-      already-written, already-tested `SitePolicy`/`PostPolicy`
-      (`docs/adr/0005-domain-model.md`), and resolves "current
-      workspace" for the authenticated user. Must fix the known N+1 risk
-      (eager-load `workspace.users`) the moment a policy runs inside a
-      list endpoint — see the Engineering Journal's Future Backlog.
-      Frontend: real login/logout UI, `ProtectedLayout` (already wired
-      as a pass-through since Milestone 4) gets a real check.
-- [ ] **9. API Completion & Frontend Migration** — Migrate the
+- [x] **8. Authentication & Authorization** — Laravel Sanctum cookie/
+      session SPA auth (no JWTs, no bearer tokens); `auth:sanctum`
+      around every route except `/health` and `/login`.
+      `->authorize()` wired into `SiteController`/`PostController`
+      using the already-written, already-tested `SitePolicy`/
+      `PostPolicy` (`docs/adr/0005-domain-model.md`) — no policy logic
+      changed, only wired in. Introduced a **Current Workspace
+      Resolver** (`CurrentWorkspaceResolver` → `ResolveCurrentWorkspace`
+      middleware → `CurrentWorkspaceContext`) so controllers/services
+      depend on an authorized "current workspace," never a
+      client-supplied `workspace_id` — architecturally resolves the
+      policy N+1 risk flagged in Milestone 7's Future Backlog for list
+      endpoints, rather than papering over it with eager loading. Fixed
+      two real vulnerabilities the architecture review surfaced:
+      `DashboardService` aggregating every workspace regardless of
+      tenant, and unauthorized `workspace_id`/`site_id` filters on the
+      Sites/Posts index endpoints. Frontend: real login/logout,
+      `ProtectedLayout` (wired as a pass-through since Milestone 4) now
+      does a real session check with redirect-preserving `/login`,
+      `useCurrentUser()` as TanStack Query server state (no Zustand
+      auth store — see `docs/adr/0003-dashboard-data-architecture.md`'s
+      precedent). Registration, workspace switcher UI, email
+      verification, password reset, 2FA, and social auth are named,
+      deliberately deferred — see
+      `docs/adr/0006-authentication-architecture.md`.
+- [x] **9. WordPress Integration Platform** — Real WordPress REST API
+      connections via Application Passwords (HTTP Basic Auth) — the
+      actual handshake that creates `Site` rows for real, replacing
+      Milestone 7's plain-attribute creation (`SiteController`,
+      `SiteConnected`/`LogSiteConnected` were already scaffolded and
+      waiting — `docs/adr/0004-backend-foundation.md`).
+      `ServiceUnavailableException`'s successors (`WordPressConnectionException`/
+      `WordPressAuthenticationException`/`WordPressResponseException`)
+      become real the moment this calls a real external service. New
+      `App\Services\WordPress\` integration layer (Contracts/Client/
+      Authentication/DTO/Exceptions/Security) — controllers never talk
+      to WordPress directly. SSRF guard and a dedicated rate limiter on
+      every connection-testing endpoint. Credentials encrypted in a
+      separate `site_credentials` table, never touched by
+      `SiteResource`. Frontend: a real Connect Site flow, a sites list,
+      and this app's first nested route (`/wordpress/[id]`), which also
+      resolved the sidebar `isActive` exact-match gap deferred since
+      Milestone 4.1. See
+      `docs/adr/0007-wordpress-integration-architecture.md`.
+- [ ] **10. API Completion & Frontend Migration** — Migrate the
       remaining seven dashboard widgets off `src/services/mock/` onto
       real endpoints, following the pattern Milestones 6–7 established
       (`docs/adr/0004-backend-foundation.md`'s Future Implications).
@@ -98,12 +130,6 @@ real data, and a real connection to a real WordPress site.
       gap since Milestone 7). Give `analytics`/`settings` real,
       minimal-but-genuine logic where the domain doesn't need a
       dedicated future milestone to design properly.
-- [ ] **10. WordPress Integration** — Real WordPress REST API
-      connections: the actual OAuth/API-key handshake that creates
-      `Site` rows (`SiteController`, `SiteConnected`/`LogSiteConnected`
-      are already scaffolded and waiting — `docs/adr/0004-backend-foundation.md`).
-      `ServiceUnavailableException` (built, unused since Milestone 6)
-      becomes real the moment this calls a real external service.
 
 ## Release v0.9 — Async, Extensibility & Quality
 

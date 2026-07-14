@@ -3,31 +3,36 @@
 namespace App\Models;
 
 use App\Enums\SiteStatus;
-use Database\Factories\SiteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Builder;
 
 class Site extends Model
 {
-    /** @use HasFactory<SiteFactory> */
     use HasFactory, SoftDeletes;
 
-    // Explicit allow-list, not `$guarded = []` — mass-assignment
-    // protection per docs/adr/0004-backend-foundation.md's security
-    // foundation section.
     protected $fillable = [
         'workspace_id',
         'name',
+        'url',
         'status',
         'wordpress_version',
         'theme',
+        'php_version',
         'plugin_updates_available',
+        'plugin_count',
+        'user_count',
+        'timezone',
+        'language',
         'storage_used_mb',
         'storage_limit_mb',
+        'last_connected_at',
+        'last_checked_at',
+        'connection_error',
     ];
 
     protected function casts(): array
@@ -35,8 +40,12 @@ class Site extends Model
         return [
             'status' => SiteStatus::class,
             'plugin_updates_available' => 'integer',
+            'plugin_count' => 'integer',
+            'user_count' => 'integer',
             'storage_used_mb' => 'integer',
             'storage_limit_mb' => 'integer',
+            'last_connected_at' => 'datetime',
+            'last_checked_at' => 'datetime',
         ];
     }
 
@@ -55,10 +64,11 @@ class Site extends Model
         return $this->hasMany(AnalyticsSnapshot::class);
     }
 
-    /**
-     * @param  Builder<Site>  $query
-     * @return Builder<Site>
-     */
+    public function credential(): HasOne
+    {
+        return $this->hasOne(SiteCredential::class);
+    }
+
     public function scopeConnected(Builder $query): Builder
     {
         return $query->where('status', SiteStatus::Connected);

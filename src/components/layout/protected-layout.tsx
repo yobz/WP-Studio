@@ -1,17 +1,44 @@
-import type * as React from "react";
+"use client";
+
+import * as React from "react";
+import { usePathname, useRouter } from "next/navigation";
+
+import { LoadingState } from "@/components/common/loading-state";
+import {
+  useCurrentUser,
+  useUnauthorizedListener,
+} from "@/features/authentication/hooks/use-auth";
 
 interface ProtectedLayoutProps {
   children: React.ReactNode;
 }
 
-/**
- * Placeholder auth boundary for Milestone 8 (Authentication). Currently a
- * pass-through — no session check exists yet. Wiring it in now (rather than
- * adding it later) means every shell route already sits behind this
- * boundary, so Milestone 8 only has to implement the check itself here,
- * not retrofit every route.
- */
 function ProtectedLayout({ children }: ProtectedLayoutProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { data: user, isPending } = useCurrentUser();
+  useUnauthorizedListener();
+
+  React.useEffect(() => {
+    if (isPending || user !== null) return;
+
+    const redirectTarget =
+      pathname && pathname !== "/dashboard"
+        ? `?redirect=${encodeURIComponent(pathname)}`
+        : "";
+    router.replace(`/login${redirectTarget}`);
+  }, [isPending, user, pathname, router]);
+
+  if (isPending) {
+    return (
+      <LoadingState message="Checking your session..." className="min-h-svh" />
+    );
+  }
+
+  if (user === null) {
+    return null;
+  }
+
   return children;
 }
 

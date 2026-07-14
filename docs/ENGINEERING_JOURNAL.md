@@ -23,23 +23,40 @@ items are added, resolved, or reprioritized; not a chronological log
   open). Closing the inline-expand mobile search returns focus to
   `document.body` instead of the search-toggle icon button. Real
   keyboard/screen-reader-user regression, not cosmetic.
-- **`SitePolicy`/`PostPolicy` authorization checks are not eager-load
-  safe** (found Milestone 7, by design — see
-  [[0005-domain-model]](adr/0005-domain-model.md)'s Performance
-  section). `hasMember()` runs a query per call; fine for a single
-  `show`/`update` check, a real N+1 the moment Milestone 8 wires
-  `can:view` into a list endpoint without eager-loading
-  `workspace.users` first. Not a bug yet — no route calls it in a loop
-  — but Milestone 8 needs to inherit this awareness, not rediscover it
-  under load.
+- ~~**`SitePolicy`/`PostPolicy` authorization checks are not eager-load
+  safe**~~ **Resolved, Milestone 8.** Rather than eager-load
+  `workspace.users` before a per-row loop (the fix this item
+  originally named), the Current Workspace Resolver architecture
+  removes the loop entirely — `index()` actions authorize the
+  *workspace* once (via `ResolveCurrentWorkspace` middleware) and then
+  filter with a plain `WHERE workspace_id = ?`, never a per-row Gate
+  check. See
+  [[0006-authentication-architecture]](adr/0006-authentication-architecture.md).
 
 ### Medium Priority
 
-- **Sidebar `isActive` uses exact match, not prefix match** (found
-  Milestone 4.1, deliberately deferred). `/content/123` doesn't
-  highlight the `Content` nav item. Needs a real decision on matching
-  rules (e.g. should `/dashboard` prefix-match `/dashboard-settings`?)
-  before implementing, not a reflexive `startsWith`.
+- **Open `DropdownMenu`/`Popover` content isn't contained by a landmark**
+  (found Milestone 8, pre-existing since Milestone 4 — `axe-core`'s
+  `region` rule, moderate severity). Base UI portals popup content
+  (the header's user menu, notifications popover) to `document.body`
+  for correct floating-UI stacking, outside the `<header>`/`<main>`
+  landmark structure — flagged only while a menu is actually open (0
+  violations with every menu closed, confirmed via this milestone's own
+  audit). Not fixed here: the underlying mechanism is shared by every
+  Base UI popup primitive project-wide (`DropdownMenu`, `Popover`,
+  `Tooltip`), so a real fix is a design-system-level decision (e.g. an
+  `aria-owns` relationship, or accepting `region`'s known false-positive
+  rate against portaled interactive overlays), not a one-component
+  patch — worth a dedicated look whenever `ui/dropdown-menu.tsx`/
+  `ui/popover.tsx` are next touched.
+- ~~**Sidebar `isActive` uses exact match, not prefix match**~~
+  **Resolved, Milestone 9.** `/wordpress/[id]` is the first nested
+  route this app has, which is exactly the trigger this item was
+  waiting for. Matches a full path segment (`pathname === item.href ||
+  pathname.startsWith(item.href + "/")`), not a bare `startsWith` —
+  the specific risk this item flagged (`/dashboard` wrongly
+  prefix-matching a future `/dashboard-settings`) is avoided by the
+  trailing slash.
 - **Recent Drafts' deterministic failure is module state, not
   request state** (found Milestone 5). Resets on full page reload but
   not on client-side navigation within the app — fine for demoing the
@@ -66,6 +83,22 @@ items are added, resolved, or reprioritized; not a chronological log
   export, grace period) before this is ever exposed through an API
   endpoint. No such endpoint exists yet, so not urgent — but flagged
   before one gets added casually.
+- **`UrlSafetyValidator`'s SSRF guard doesn't resolve hostnames**
+  (found Milestone 9, by design — see
+  [[0007-wordpress-integration-architecture]](adr/0007-wordpress-integration-architecture.md)'s
+  Security section). Every literal IP address is checked against
+  private/reserved ranges; a hostname that *resolves* to one (or DNS
+  rebinding — safe at check-time, different at request-time) isn't
+  caught. Deliberate: resolving DNS inside the validator would add a
+  real network call to what's meant to be a fast, deterministic,
+  test-free check. Deferred to Milestone 19 alongside the cross-domain
+  cookie decision, not ignored.
+- **`wordpress_version`/`php_version` are always `null`** (found
+  Milestone 9, by design). Stock WordPress doesn't expose either via
+  its public REST API without a companion plugin — see the ADR's
+  "Version Detection" section for the full accounting of what is and
+  isn't obtainable today. Revisit if a WP Studio companion plugin ever
+  gets built (see the ADR's Future Extensibility).
 
 ### Low Priority
 
@@ -76,12 +109,10 @@ items are added, resolved, or reprioritized; not a chronological log
 - **`components.json`'s `iconLibrary`/style presets are hand-picked
   and undocumented as to why** (found Milestone 4). Low risk, but a
   future contributor changing them wouldn't know what would break.
-- **Root `README.md` is still Create Next App's default boilerplate**
-  (found Milestone 6, noticed while writing `backend/README.md`). Not
-  this milestone's scope to fix, but worth doing before the project is
-  shown to anyone external — a portfolio project's own top-level
-  README being unedited default text undercuts the "production
-  software" framing everywhere else.
+- ~~**Root `README.md` is still Create Next App's default boilerplate**~~
+  **Resolved** in the post-Milestone-7 documentation session — now
+  points to `docs/AI_ENGINEERING_CONTEXT.md`, `docs/PROJECT.md`, and
+  `backend/README.md` instead of Next.js's generic getting-started text.
 - **Local development runs on SQLite, not a server database** (found
   Milestone 6, by design — see the ADR's Trade-offs). Fine for this
   milestone's architecture-only scope; a real deployment target should
@@ -110,15 +141,26 @@ items are added, resolved, or reprioritized; not a chronological log
   integration to design the schema against — unlike `PublishingJob`,
   which got built this milestone because its shape is generic and
   well-understood.
-- **Every backend API route is unauthenticated** (by design, Milestone
-  6 — see [[0004-backend-foundation]](adr/0004-backend-foundation.md)).
-  Milestone 8 (Authentication) adds Sanctum; `config/cors.php`'s
-  `supports_credentials` and the `sanctum/csrf-cookie` CORS path are
-  already prepared for it. **Update, Milestone 7:** `SitePolicy`/
-  `PostPolicy` now contain real, tested authorization logic
-  (`PolicyTest.php`) ready for Milestone 8 to wire in — see the High
-  Priority item above for the one thing that logic needs (eager
-  loading) before it's wired into a list endpoint.
+- ~~**Every backend API route is unauthenticated**~~ **Resolved,
+  Milestone 8.** Sanctum cookie/session auth, every route behind
+  `auth:sanctum` except `/health` and `/login`, `SitePolicy`/
+  `PostPolicy` wired into `SiteController`/`PostController` unchanged.
+  See [[0006-authentication-architecture]](adr/0006-authentication-architecture.md).
+- **No self-registration or onboarding flow** (found Milestone 8, by
+  design — see
+  [[0006-authentication-architecture]](adr/0006-authentication-architecture.md)'s
+  "Why registration is deferred"). Deliberately not built without a
+  real answer to "which workspace does a new user land in" — the same
+  reasoning [[0005-domain-model]](adr/0005-domain-model.md) already
+  applied to deferring `WorkspaceService`. Login is against
+  `DemoDataSeeder`'s seeded user until a future onboarding milestone.
+- **Sanctum's cookie-session auth needs a shared registrable domain in
+  production** (found Milestone 8, by design). Works locally
+  (`localhost:3000`/`:8000`) out of the box; the documented Vercel +
+  Railway deployment target is two unrelated domains today. Deferred to
+  Milestone 19 (Cloud Deployment & Security Hardening) — the same
+  pattern as the SQLite→MySQL production decision deferred since
+  Milestone 6.
 - **No repository layer in the backend** (by design, Milestones 6–7 —
   nothing to abstract yet; revisit only if a real second data source
   or complex query-composition need appears).
@@ -292,6 +334,157 @@ guessed schema now would very likely mean a breaking migration later;
 naming the gap explicitly is more honest than filling it with a
 placeholder that looks more finished than it is.
 
+### Milestone 8 (Authentication & Authorization)
+
+**1. Revising a design mid-review, not just approving or rejecting it.**
+*Problem:* the initial architecture proposal — every workspace-scoped
+endpoint takes an explicit, policy-checked `workspace_id` — is
+correct and would have worked. *Chosen solution:* replaced it, on
+explicit direction, with a centralized Current Workspace Resolver
+(`CurrentWorkspaceResolver` → middleware → a `scoped()` context
+binding) before any implementation started. *Trade-offs:* more
+architecture (three new classes) for a milestone that could have
+shipped with one. *Why this approach:* the simpler design pushes a
+"remember to scope this to the current workspace" responsibility onto
+every future frontend call site and every future controller, forever;
+centralizing it once means a future workspace switcher or subdomain-
+based tenancy is a change to one class, not an audit of every place
+`workspace_id` might have been read. Worth recording because the
+*review* caught this, not the implementation — the cheaper design
+would have shipped fine and only shown its cost two or three
+milestones later.
+
+**2. Finding two real vulnerabilities by reading code, not by guessing
+where auth belongs.** *Problem:* "add `auth:sanctum`" was the
+milestone's obvious first move, but reading `DashboardService` and
+`IndexSitesRequest` before writing anything surfaced that
+`DashboardService::summary()` aggregated every workspace in the
+database with no scoping at all, and `IndexSitesRequest` accepted any
+`workspace_id` with no membership check. *Chosen solution:* fixed both
+as part of this milestone, not filed as follow-up tickets. *Why this
+matters for an interview answer:* neither was hypothetical — both were
+verified by tracing the actual query code, and both were invisible in
+every previous milestone's testing because only one workspace has ever
+existed in seeded data. "It passed every test" and "it's correct" are
+different claims when the tests never had a second tenant to fail
+against.
+
+**3. Choosing TanStack Query over Zustand for auth state by applying
+an existing precedent, not re-deciding it.** *Problem:* the milestone
+brief asked for an "auth context/store," which reads naturally as
+"add a Zustand store." *Chosen solution:* `useCurrentUser()`
+(`useQuery(["auth","user"])`) instead — no Zustand store at all.
+*Why this approach:* `docs/adr/0003-dashboard-data-architecture.md`
+already drew this exact line for every other piece of server data;
+the authenticated user is server state (it lives in the `users` table,
+can change for reasons the client didn't initiate, like an expired
+session) — a Zustand copy would just be a second cache that can drift
+from what the server actually thinks. Recognizing "this is the same
+category of decision already made" avoided re-litigating it from
+scratch, the same lesson the Milestone 5 "static route with a
+clock-dependent greeting" entry drew from a different angle.
+
+**4. A Sanctum SPA testing gotcha that looked like a production bug at
+first.** *Problem:* HTTP-level login/logout Pest tests failed with
+`RuntimeException: Session store not set on request`, and later,
+`assertGuest()` reporting a user as still authenticated after a
+real logout call succeeded. *Investigation:* Sanctum's
+`EnsureFrontendRequestsAreStateful` only attaches session middleware to
+requests it recognizes as "from the frontend" (via `Referer`/`Origin`),
+which a plain `postJson()` call doesn't set — fixed by sending a
+`Referer` header matching a `SANCTUM_STATEFUL_DOMAINS` entry. The
+second failure was different: Laravel's test client doesn't carry
+cookies between separate simulated requests the way a real browser
+does, and the `array` session driver this test suite runs under (see
+`phpunit.xml`) doesn't persist store state across requests either — so
+neither "log in, then check the guard" nor "log in, log out, reuse the
+old cookie" could reliably prove invalidation the way they would
+against a real server. *Chosen solution:* assert on the one thing that
+*is* observable within a single response — `session()->invalidate()`
+regenerates the session ID, so the logout response's own Set-Cookie
+differs from the one sent in. *Why this matters:* both fixes are
+testing-environment-specific, not application bugs (the actual
+`AuthController::logout()` code — `Auth::guard('web')->logout()` +
+`session()->invalidate()` — is the standard, correct Laravel
+implementation throughout) — worth distinguishing "my test's
+assumptions about the environment are wrong" from "my code is wrong"
+before changing either one, the same discipline the Milestone 7
+off-by-one entry required.
+
+**5. A dev-mode-only navigation bug that wasn't a bug.** *Problem:*
+browser-driven verification of the unauthenticated-redirect flow
+showed `router.replace("/login")` being called (confirmed via console
+log) but the URL never actually changing, even after a 10-second wait.
+*Investigation:* Next.js dev mode's Fast Refresh was rebuilding
+immediately after the navigation call on every run, including runs
+where no file had just been edited — consistent with an HMR-related
+remount interrupting the in-flight client-side navigation, not
+anything `ProtectedLayout` itself was doing wrong. Confirmed by
+re-running the identical verification against a production build
+(`next build && next start`): the redirect fired correctly on the
+first attempt, with a `framenavigated` event to `/login` observed
+directly. *Chosen solution:* verify auth flows against a production
+build, not the dev server, when the behavior under test involves
+client-side navigation. *Why this matters:* this is the same lesson
+Milestone 5's zombie-dev-server entries drew from a different angle —
+distinguishing a real defect from an artifact of the local tool chain
+requires actually isolating which one changed, not assuming the
+newest code is guilty by default.
+
+### Milestone 9 (WordPress Integration Platform)
+
+**1. `retry()`'s default `throw: true` silently ate my own exception
+mapping.** *Problem:* `WordPressConnectionTest`'s "rejects invalid
+credentials" case failed with an uncaught
+`Illuminate\Http\Client\RequestException: HTTP request returned status
+code 401`, even though `HttpWordPressClient::fetchRequired()` has its
+own explicit `if ($response->status() === 401 ...)` branch that should
+have caught it first. *Investigation:* Laravel's `PendingRequest::retry()`
+takes a fourth parameter, `$throw`, defaulting to `true` — meaning
+`retry()` throws its own `RequestException` on a failing response once
+retries are exhausted, *before* control ever returns to the calling
+code to inspect the response itself. My `retry(2, 200, when: fn ($e)
+=> $e instanceof ConnectionException)` call only customized *when to
+retry*, not this separate, independently-defaulted throwing behavior.
+*Chosen solution:* added `throw: false` explicitly. *Why this matters
+for an interview answer:* a method having more default behavior than
+its name and the arguments you passed it suggest is a real, general
+risk with fluent builder APIs — worth reading a method's full
+signature (not just the parameters you intend to use) before assuming
+you've fully specified its behavior, especially for anything with
+security/correctness implications like which exceptions get thrown.
+
+**2. Treating SSRF as the headline risk, not an afterthought.**
+*Problem:* the milestone brief's own failure-mode list (network
+failures, invalid credentials, unreachable hosts, ...) never mentioned
+SSRF by name. *Chosen solution:* named it explicitly in the
+architecture review, before writing any code, as the actual
+first-order risk "connect to a URL a workspace member supplies"
+introduces — then built `UrlSafetyValidator` and a dedicated test
+(`Http::assertNothingSent()`, proving the request never even attempts
+to go out) proving it's closed, not just documented as a concern.
+*Why this matters for an interview answer:* a brief's own named list of
+concerns is a floor, not a ceiling — the most consequential risk in a
+"fetch a user-supplied URL" feature is the one general-purpose failure-
+mode brainstorming (network failures, timeouts) doesn't surface on its
+own, because it's a security property of the feature's *shape*, not a
+reliability property of the specific calls it makes.
+
+**3. Choosing graceful degradation over an all-or-nothing handshake,
+deliberately.** *Problem:* three of five WordPress REST endpoints this
+integration calls (themes, plugins, users) are each independently
+capability-gated — a real Application Password created by an editor,
+not an administrator, will legitimately 403 on some of them.
+*Chosen solution:* `fetchOptional()` treats that as "this field isn't
+available" (`null`), not a failed connection; only the two calls that
+*prove* the URL is WordPress and the credential works at all
+(`fetchRequired()`) can fail the whole attempt. *Why this approach:*
+the alternative — requiring every capability to succeed — would reject
+a real, legitimately-connectable site over a permissions boundary that
+has nothing to do with whether the connection itself is valid,
+punishing the common case (a non-admin Application Password) to
+simplify a small amount of code.
+
 ---
 
 ## Resume Highlights
@@ -324,6 +517,69 @@ to real, shipped, verified work.
   entity relationships, indexing strategy, soft-delete policy, and
   explicitly-deferred schema decisions with documented rationale for
   each.
+
+### Milestone 8 (Authentication & Authorization)
+
+- Implemented cookie/session-based SPA authentication (Laravel
+  Sanctum) with CSRF protection, session-fixation mitigation, and
+  rate-limited login, deliberately choosing session cookies over
+  JWTs/bearer tokens to eliminate an entire class of XSS-based token
+  theft.
+- Designed and built a request-scoped "Current Workspace Resolver"
+  architecture (a resolver service, middleware, and a request-scoped
+  container binding) so multi-tenant authorization logic lives in one
+  place and a future workspace-switching feature requires no
+  controller changes.
+- Identified and fixed two real cross-tenant data-isolation
+  vulnerabilities during architecture review — an unscoped dashboard
+  aggregation query and unauthorized tenant-ID filters on two index
+  endpoints — before they shipped, closing both with regression tests
+  proving isolation.
+- Wired existing, previously-unused authorization policies into live
+  API endpoints and resolved a known N+1 authorization risk
+  architecturally (eliminating per-row permission checks entirely for
+  list endpoints) rather than with a caching workaround.
+- Grew the backend automated test suite from 38 to 57 passing tests,
+  adding dedicated authentication and cross-tenant isolation coverage,
+  and fixed a real gap in centralized exception handling
+  (`AuthorizationException` wasn't mapped to the API's error envelope)
+  found while writing those tests.
+- Built the full frontend authentication experience (protected
+  routing with intended-destination preservation, session-aware
+  TanStack Query state, centralized CSRF/credential handling) and
+  verified the entire login/logout/session lifecycle end-to-end in a
+  real browser against a production build.
+
+### Milestone 9 (WordPress Integration Platform)
+
+- Designed and built a dedicated external-integration architecture
+  (contract, HTTP client, authenticator, DTOs, typed exceptions) for
+  connecting to third-party WordPress REST APIs via Application
+  Passwords, with retry/timeout handling and graceful degradation
+  against partial API failures.
+- Identified and mitigated a server-side request forgery (SSRF) risk
+  in a "connect to a user-supplied URL" feature before implementation
+  — built and tested a URL-safety guard blocking private/internal
+  network addresses, verified via assertions that no outbound request
+  is ever attempted for an unsafe target.
+- Implemented encrypted credential storage with defense-in-depth
+  (a dedicated database table never touched by the API's serialization
+  layer, field-level encryption, and hidden-attribute protection),
+  verified directly in tests that plaintext credentials never reach
+  either the database or an API response.
+- Extended a multi-tenant authorization system to a new external-
+  integration feature without modifying its core policies, and closed
+  a data-integrity gap by moving a previously client-settable resource
+  status field to be exclusively server-derived from verified external
+  data.
+- Grew the backend automated test suite to 73 passing tests, entirely
+  mocking third-party API calls (no live external dependency in CI),
+  and found/fixed a real bug in exception-handling precedence
+  (a retry mechanism's default behavior was silently overriding custom
+  error handling) during test development.
+- Built the application's first dynamic/nested frontend route and used
+  it to resolve a previously-deferred navigation UX gap (parent-route
+  highlighting for nested pages).
 
 ---
 

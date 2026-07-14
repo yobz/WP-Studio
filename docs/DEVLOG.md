@@ -1,5 +1,246 @@
 # Devlog
 
+## 2026-07-14 — Milestone 9: WordPress Integration Platform
+
+Real WordPress connections — the platform now actually talks to
+external WordPress sites, not just its own database. A dedicated
+`App\Services\WordPress\` integration layer, Application Password
+authentication, an SSRF guard, encrypted credential storage, and the
+first real frontend site-management UI. Full reasoning in
+`docs/adr/0007-wordpress-integration-architecture.md`; this entry is
+the what.
+
+**Architecture review before implementation, as required.** Confirmed
+every existing platform service (`CurrentWorkspaceResolver`,
+`ApiResponse`/`ApiExceptionHandler`, `SitePolicy`, auth middleware) was
+directly reusable — the only genuinely new piece is the HTTP client
+that talks to an external, uncontrolled system. Reviewed and approved
+before any code was written; see the milestone's own approval thread.
+
+**A dedicated integration layer, not logic scattered across
+controllers.** `App\Services\WordPress\Contracts\WordPressClientContract`
+(one method — verify and refresh are the same fetch over the wire) →
+`Client\HttpWordPressClient` (the only class that ever makes an HTTP
+request to WordPress) → `Authentication\ApplicationPasswordAuthenticator`
+(HTTP Basic Auth, isolated so a future second auth method is additive)
+→ `DTO\WordPressSiteInfo` → `Exceptions\{WordPressConnectionException,
+WordPressAuthenticationException,WordPressResponseException}` (all
+extending the existing `ApiException`, rendering through the unchanged
+`ApiExceptionHandler`) → `Security\UrlSafetyValidator` (the SSRF
+guard). `SiteConnectionService` orchestrates all of it — deliberately
+not an extension of `SiteService` (see the ADR's Service Boundaries
+section for why that's a real distinction, not just a naming choice).
+
+**Two REST calls load-bearing, three best-effort.** The root index
+(proves it's WordPress) and `/wp/v2/settings` (proves the credential
+works) propagate failure; `/wp/v2/themes`, `/wp/v2/plugins`,
+`/wp/v2/users` are each independently capability-gated by WordPress
+itself and resolve to `null` on failure rather than failing the whole
+connection — a real, working implementation of "graceful degradation,"
+not an aspiration. `userCount` comes from the `X-WP-Total` response
+*header* on a `per_page=1` request, not the body — WordPress's own
+pagination convention, avoided fetching every user just to count them.
+
+**An honest accounting of what's detectable.** `wordpress_version` and
+`php_version` are real columns, always `null` — stock WordPress
+doesn't expose either through its public REST API without a companion
+plugin. Documented as a real constraint in the ADR, not silently
+guessed at — the same discipline `0005-domain-model.md` applied to the
+"AI Jobs" table.
+
+**Schema.** A new migration (not another amendment of the M6/M7 `sites`
+migration — a deliberate divergence from that precedent, reasoned
+through in the ADR) adds `url`, `php_version`, `plugin_count`,
+`user_count`, `timezone`, `language`, `last_connected_at`,
+`last_checked_at`, `connection_error`. A new `site_credentials` table
+— separate from `sites` specifically so `SiteResource` can never
+accidentally serialize a credential — stores `wp_username` plain and
+`application_password` via Eloquent's `encrypted` cast. New
+`SiteStatus::Error` case, distinct from `Disconnected`.
+
+**Security — SSRF was the first-order risk, not a side concern.**
+"Connect to a URL a workspace member supplies" is a request-forgery
+primitive without a check. `UrlSafetyValidator` rejects non-http(s)
+schemes, local hostnames, and private/reserved literal IP addresses
+before any request is sent — verified in tests via
+`Http::assertNothingSent()`. A new `wordpress-connection` rate limiter
+(10/minute per user) covers `connect`/`verify`/`refresh-metadata`.
+Named, accepted residual risk: no DNS resolution check (a hostname
+that resolves to a private IP isn't caught) — deliberate, to keep the
+guard network-free and deterministic in tests; deferred to Milestone
+19 alongside the cross-domain cookie decision.
+
+**`POST /sites` changed contract, deliberately (flagged in the
+architecture review before implementing).** Now requires `url`,
+`wp_username`, `application_password`; every WordPress-derived field
+a client could previously set directly (`wordpress_version`, `theme`,
+`plugin_updates_available`) is now server-only, sourced from the real
+handshake. `UpdateSiteRequest` no longer accepts `status` either —
+status transitions now only happen through the real lifecycle actions,
+closing the exact integrity gap ("claim connected without verifying")
+this milestone exists to fix.
+
+**Real CRUD, extended.** `SiteController` gained `disconnect` (deletes
+the stored credential, not just a status flip — "store only what's
+required"), `verifyConnection`, `refreshMetadata`. `disconnect`
+requires owner/admin (matching `update`); verify/refresh require only
+membership — read-adjacent, the same posture `SitePolicy::view()`
+already takes.
+
+**Frontend.** New `dialog.tsx` primitive (hand-extracted via
+`--view`, not `shadcn add`, to protect the hardened `Button` — same
+process as Milestone 4's `sidebar`/`sheet`; fixed the same
+accessible-name gap in the generated close button while integrating).
+`src/features/wordpress/` — a Connect Site dialog (React Hook Form +
+Zod), a sites grid with live status badges, and `/wordpress/[id]` —
+this app's first dynamic/nested route, which also closed the
+`AppSidebar` `isActive` exact-match gap deferred since Milestone 4.1
+(now matches a full path segment prefix, not a bare `startsWith`).
+
+**Testing.** 16 new Pest tests (`WordPressConnectionTest`) — successful
+connection, rejected credentials, unreachable host, malformed
+response, partial-capability graceful degradation, SSRF rejection
+(asserting zero HTTP calls were made), disconnect/verify/refresh
+lifecycle, tenant isolation, rate limiting — all against `Http::fake()`,
+never a live WordPress server. Existing Site tests updated for the new
+`StoreSiteRequest`/`UpdateSiteRequest` contracts. 73/73 passing (up
+from 57). Found and fixed a real bug while writing them: Laravel's
+`Http::retry()` defaults to throwing on any non-2xx response once
+retries exhaust, which was silently pre-empting this integration's own
+401/403 → `WordPressAuthenticationException` mapping — fixed with an
+explicit `throw: false`. Also found `SiteCredential` was missing
+`HasFactory`, caught immediately by the first factory-based test.
+
+**Verification.** `typecheck`, `lint`, `build` all pass — `/wordpress`
+and `/wordpress/[id]` both new routes. Backend `php artisan test`:
+73/73. Full flow driven in a real, production-mode browser with real
+internet access (not mocked): login → WordPress page → nested site
+detail → sidebar prefix-match highlighting → Connect Site dialog
+client-side validation → a **real** SSRF rejection against
+`192.168.1.1` (zero mocking, the actual `UrlSafetyValidator` running
+against a real request) → a **real** rejection connecting to
+`example.com` (a genuine reachable, non-WordPress site) — 8/8 checks
+passed, zero unexpected console errors.
+
+**Documentation** — `docs/adr/0007-wordpress-integration-architecture.md`
+(new); `docs/PROJECT.md` gained a "WordPress Integration Platform"
+section and updated Known Limitations/Stack table/Status;
+`docs/ROADMAP.md` milestone 9 marked complete (swapped with the
+originally-planned "API Completion & Frontend Migration," now
+milestone 10 — WordPress Integration was the more natural next step
+after Authentication, and swapping positions kept the release's total
+milestone count unchanged); `docs/ENGINEERING_JOURNAL.md` gained
+investigation entries, resolved Future Backlog items, and new ones.
+
+## 2026-07-13 — Milestone 8: Authentication & Authorization
+
+Real login, at last — Laravel Sanctum cookie/session SPA auth, wired
+into every route Milestones 6–7 left open, plus a new Current
+Workspace Resolver architecture that closes two real cross-tenant
+vulnerabilities the pre-implementation architecture review surfaced.
+Full reasoning in `docs/adr/0006-authentication-architecture.md`; this
+entry is the what.
+
+**Architecture review before implementation, as required.** Reading
+the existing backend surface (`config/cors.php`, `config/session.php`,
+`SitePolicy`/`PostPolicy`, every controller) surfaced two concrete,
+previously-undocumented vulnerabilities, not hypothetical risks:
+`IndexSitesRequest`/`IndexPostsRequest` validated `workspace_id`/
+`site_id` as "any existing ID," no membership check; `DashboardService::summary()`
+had zero workspace scoping at all — both invisible with one seeded
+workspace, both real leaks the moment a second exists. The initial
+proposal (explicit, policy-checked `workspace_id` per request) was
+revised on explicit direction into a centralized **Current Workspace
+Resolver** — see the ADR's Context and Alternatives sections.
+
+**Backend — Sanctum + Current Workspace Resolver.**
+`composer require laravel/sanctum`, `$middleware->statefulApi()` in
+`bootstrap/app.php`. `App\Services\CurrentWorkspaceResolver` (the
+resolution strategy, isolated in one class) → `App\Http\Middleware\ResolveCurrentWorkspace`
+(runs after `auth:sanctum`, resolves once per request) →
+`App\Support\CurrentWorkspaceContext` (a `scoped()` container binding —
+one instance per request, Octane-safe even though nothing runs Octane
+today). `SiteController`/`PostController`/`DashboardController` all
+depend on the context via constructor injection instead of trusting a
+client-supplied ID. `index()` actions need no per-row authorization —
+membership in the resolved workspace is already guaranteed, which is
+also how this milestone resolves the N+1 risk Milestone 7's Future
+Backlog flagged, architecturally rather than via eager loading.
+
+**Auth endpoints.** `Http/Controllers/Api/V1/Auth/AuthController`
+(`login`, `logout`) + `UserController` (`show`, the profile endpoint).
+`login()` regenerates the session ID (session-fixation mitigation);
+`logout()` invalidates the session and rotates the CSRF token. A new
+`InvalidCredentialsException` (401, code `INVALID_CREDENTIALS`) is
+distinct from plain `AuthenticationException` (401, `UNAUTHENTICATED`)
+— a wrong password and a nonexistent email return identically (can't
+probe which emails are registered), while the frontend can still tell
+"this login attempt was wrong" from "your session expired" and show
+the right copy for each. `RateLimiter::for('login', ...)` — 5/minute,
+keyed by `email|ip` together, matching Laravel Fortify's own default.
+
+**Real CRUD is now actually authorized.** `$this->authorize()` calls
+added to `SiteController`/`PostController` using the Policies Milestone
+7 wrote and tested — no policy logic changed, only wired in.
+
+**Registration deliberately deferred.** Raises "which workspace does a
+new user land in" — a real product decision `docs/adr/0005-domain-model.md`
+already deferred once (workspace creation as "a future onboarding-flow
+concern"). Login is against `DemoDataSeeder`'s existing seeded user
+(`test@example.com`) until a future onboarding milestone designs
+registration for real, rather than guessing at auto-workspace-creation
+now. See the ADR's Future IAM Roadmap for what's next when it does.
+
+**Frontend.** `src/lib/api-client.ts` — `credentials: "include"` on
+every request, a centralized CSRF-cookie handshake (deduplicated
+against concurrent callers) before any mutating call, and a
+`UNAUTHORIZED_EVENT` fired only on a genuine `UNAUTHENTICATED` 401 (not
+`INVALID_CREDENTIALS`, which would misfire on the login page itself).
+`src/features/authentication/` — `useCurrentUser()` (TanStack Query,
+**not** a Zustand store — same client/server-state split
+`docs/adr/0003-dashboard-data-architecture.md` already established for
+everything else) is the single source of truth for "who is logged in";
+a 401 is caught and resolved to `null` inside `queryFn`, not left to
+throw, since "nobody is logged in" is an expected result, not a query
+error. `ProtectedLayout` is real now — loading state while the session
+check is in flight, redirect to `/login?redirect=<path>` on no session
+(intended destination preserved, `/dashboard` itself omitted since it's
+the default landing page anyway). New `(auth)` route group (`/login`),
+its own minimal layout, mirroring `(app)`. `AppHeader`'s user menu
+(previously disabled placeholders) shows the real signed-in user and
+has a working "Sign out."
+
+**Testing.** 19 new Pest tests (`AuthenticationTest` — login/logout/
+profile/rate-limiting/CSRF; `WorkspaceIsolationTest` — cross-tenant
+isolation, the exact vulnerabilities this milestone fixed, verified
+closed) on top of Milestone 7's 38, all updated for the new auth
+requirement (`SiteCrudTest`/`PostCrudTest`/`DashboardSummaryTest`/
+`PolicyTest`/`CrudValidationTest` now authenticate as a workspace
+member instead of hitting open routes) — 57/57 passing. Also fixed,
+found during test-writing: `ApiExceptionHandler` never actually mapped
+`AuthorizationException` to the `FORBIDDEN` envelope — Laravel's own
+exception handling converts it to `AccessDeniedHttpException` before
+this project's `render()` closure ever sees it, a real (if
+previously-unobserved, since nothing threw an authorization exception
+before this milestone) gap now closed.
+
+**Verification.** `typecheck`, `lint`, `build` all pass. Backend
+`php artisan test`: 57/57. Full flow driven in a real, production-mode
+browser (dev-mode Fast Refresh was interfering with observing
+client-side navigation during testing — not a real bug, see the
+Engineering Journal): unauthenticated redirect with preserved
+destination, wrong-password error, successful login landing on the
+originally-intended page, real dashboard data rendering, session
+surviving a full reload, the user menu showing the real email, sign-out,
+and re-protection after sign-out — all verified end-to-end, zero
+console errors.
+
+**Documentation** — `docs/adr/0006-authentication-architecture.md`
+(new); `docs/PROJECT.md` gained an "Authentication & Authorization"
+section and updated Known Limitations/Stack table/Status;
+`docs/ROADMAP.md` milestone 8 marked complete; `docs/ENGINEERING_JOURNAL.md`
+gained investigation entries and an updated Future Backlog.
+
 ## 2026-07-13 — Post-M7 Engineering Review & Platform Modernization
 
 Not a numbered milestone — a review/process session between Milestone
