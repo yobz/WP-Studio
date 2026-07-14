@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AiController;
 use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auth\UserController;
+use App\Http\Controllers\Api\V1\ContentSyncController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\PostController;
@@ -38,6 +39,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('sites/{site}/refresh-metadata', [SiteController::class, 'refreshMetadata'])
             ->middleware('throttle:wordpress-connection')
             ->name('sites.refresh-metadata');
+        Route::post('sites/{site}/sync', [ContentSyncController::class, 'sync'])
+            ->middleware('throttle:wordpress-connection')
+            ->name('sites.sync');
+        Route::get('sites/{site}/sync-status', [ContentSyncController::class, 'syncStatus'])
+            ->name('sites.sync-status');
 
         Route::apiResource('posts', PostController::class);
 

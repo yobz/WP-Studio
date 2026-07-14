@@ -122,9 +122,37 @@ real data, and a real connection to a real WordPress site.
       resolved the sidebar `isActive` exact-match gap deferred since
       Milestone 4.1. See
       `docs/adr/0007-wordpress-integration-architecture.md`.
-- [ ] **10. API Completion & Frontend Migration** — Migrate the
-      remaining seven dashboard widgets off `src/services/mock/` onto
-      real endpoints, following the pattern Milestones 6–7 established
+- [x] **10. Content Synchronization Platform** — Redefined from this
+      slot's original "API Completion & Frontend Migration" scope
+      (preserved below as Milestone 10.1) by explicit brief: the
+      platform's first read-back from a connected WordPress site.
+      New `App\Services\ContentSync\` — a generic sync engine
+      (`ContentSyncService`) parameterized by a `ContentTypeMapper`
+      contract, with `WordPressPostMapper` as the only concrete
+      implementation, so a future Pages/Media/Categories/Tags sync is
+      a new mapper, not a rewrite of the orchestrator. Extended the
+      existing `posts` table (nullable `wordpress_post_id`,
+      `wordpress_modified_at`, `wordpress_url`, `sync_status`,
+      `sync_hash`, `last_synced_at`) rather than a parallel table — a
+      synced post and a manually-created one are the same domain
+      concept to every consumer. Idempotent via a content-hash
+      comparison, not a timestamp alone; a unique
+      `(site_id, wordpress_post_id)` index is the real duplicate-import
+      guard. Reused the existing, already-workspace-scoped
+      `GET /posts?site_id=` endpoint for reads instead of adding a
+      duplicate nested route. New `POST /sites/{site}/sync` and
+      `GET /sites/{site}/sync-status`, both behind the existing
+      `SitePolicy`/rate-limiter/SSRF-guard stack. Frontend: this app's
+      second level of route nesting (`/wordpress/[id]/posts[/…]`) and
+      the first UI `Post` (built in Milestone 7) has ever had. Fully
+      synchronous, named as the exact seam Milestone 11 replaces —
+      queues/background jobs/scheduled sync explicitly deferred. See
+      `docs/adr/0008-content-synchronization.md`.
+- [ ] **10.1. API Completion & Frontend Migration** — This slot's
+      original Milestone 10 scope, displaced by the redefinition above
+      and preserved here rather than dropped. Migrate the remaining
+      seven dashboard widgets off `src/services/mock/` onto real
+      endpoints, following the pattern Milestones 6–7 established
       (`docs/adr/0004-backend-foundation.md`'s Future Implications).
       Add pagination to the `sites`/`posts` index endpoints (a named
       gap since Milestone 7). Give `analytics`/`settings` real,

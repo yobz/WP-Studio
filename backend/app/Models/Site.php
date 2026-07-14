@@ -32,6 +32,7 @@ class Site extends Model
         'storage_limit_mb',
         'last_connected_at',
         'last_checked_at',
+        'last_synced_at',
         'connection_error',
     ];
 
@@ -46,6 +47,7 @@ class Site extends Model
             'storage_limit_mb' => 'integer',
             'last_connected_at' => 'datetime',
             'last_checked_at' => 'datetime',
+            'last_synced_at' => 'datetime',
         ];
     }
 

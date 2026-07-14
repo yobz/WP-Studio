@@ -74,3 +74,42 @@ function fakeWordPressConnectionReturnsMalformedResponse(): void
         '*/wp-json/' => Http::response('<html>Not JSON</html>', 200, ['Content-Type' => 'text/html']),
     ]);
 }
+
+function fakeWordPressPostsCollection(): void
+{
+    Http::fake([
+        '*/wp-json/wp/v2/posts*' => Http::response([
+            [
+                'id' => 101,
+                'title' => ['rendered' => 'Hello World'],
+                'status' => 'publish',
+                'date_gmt' => '2026-01-01T00:00:00',
+                'modified_gmt' => '2026-01-02T00:00:00',
+                'link' => 'https://example.com/hello-world',
+            ],
+            [
+                'id' => 102,
+                'title' => ['rendered' => 'Draft Post'],
+                'status' => 'draft',
+                'date_gmt' => '2026-01-03T00:00:00',
+                'modified_gmt' => '2026-01-03T00:00:00',
+                'link' => 'https://example.com/draft-post',
+            ],
+            [
+                'id' => 103,
+                'title' => ['rendered' => 'Trashed Post'],
+                'status' => 'trash',
+                'date_gmt' => '2026-01-04T00:00:00',
+                'modified_gmt' => '2026-01-04T00:00:00',
+                'link' => 'https://example.com/trashed-post',
+            ],
+        ], 200, ['X-WP-TotalPages' => '1']),
+    ]);
+}
+
+function fakeWordPressPostsCollectionUnreachable(): void
+{
+    Http::fake([
+        '*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+    ]);
+}

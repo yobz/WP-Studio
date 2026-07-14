@@ -4,6 +4,7 @@ namespace App\Services\WordPress\Client;
 
 use App\Services\WordPress\Authentication\ApplicationPasswordAuthenticator;
 use App\Services\WordPress\Contracts\WordPressClientContract;
+use App\Services\WordPress\DTO\WordPressCollectionPage;
 use App\Services\WordPress\DTO\WordPressSiteInfo;
 use App\Services\WordPress\Exceptions\WordPressAuthenticationException;
 use App\Services\WordPress\Exceptions\WordPressConnectionException;
@@ -44,6 +45,21 @@ class HttpWordPressClient implements WordPressClientContract
             userCount: $this->fetchUserCount($baseUrl, $username, $applicationPassword),
             timezone: is_string($settings['timezone'] ?? null) ? $settings['timezone'] : null,
             language: is_string($settings['language'] ?? null) ? $settings['language'] : null,
+        );
+    }
+
+    public function fetchCollection(string $url, string $endpoint, array $query, string $username, string $applicationPassword): WordPressCollectionPage
+    {
+        $baseUrl = rtrim($url, '/');
+
+        $response = $this->request("{$baseUrl}{$endpoint}", $query, $username, $applicationPassword);
+        $body = $this->assertSuccessfulJsonArray($response, 'the response was not a valid collection.');
+
+        $totalPages = $response->header('X-WP-TotalPages');
+
+        return new WordPressCollectionPage(
+            items: $body,
+            totalPages: $totalPages !== '' && is_numeric($totalPages) ? (int) $totalPages : 1,
         );
     }
 
@@ -88,6 +104,11 @@ class HttpWordPressClient implements WordPressClientContract
     {
         $response = $this->request($endpoint, [], $authenticated ? $username : null, $authenticated ? $applicationPassword : null);
 
+        return $this->assertSuccessfulJsonArray($response, 'the response was not valid JSON.');
+    }
+
+    private function assertSuccessfulJsonArray(?Response $response, string $invalidBodyMessage): array
+    {
         if ($response === null) {
             throw new WordPressConnectionException('the request timed out or the host could not be reached.');
         }
@@ -102,7 +123,7 @@ class HttpWordPressClient implements WordPressClientContract
 
         $body = $response->json();
         if (! is_array($body)) {
-            throw new WordPressResponseException('the response was not valid JSON.');
+            throw new WordPressResponseException($invalidBodyMessage);
         }
 
         return $body;

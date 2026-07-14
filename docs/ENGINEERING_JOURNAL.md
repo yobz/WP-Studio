@@ -75,7 +75,10 @@ items are added, resolved, or reprioritized; not a chronological log
   7, by design — see the ADR's Performance section). Fine at today's
   seeded volume; a real gap once a workspace has hundreds of posts.
   Needs a real page-size decision before implementing, not a reflexive
-  default.
+  default. **Update, Milestone 10:** the new Posts list on
+  `/wordpress/[id]/posts` inherits this same gap directly — it's the
+  first UI actually rendering `Post` rows, so this is no longer a
+  theoretical future cost once real sync volume exists.
 - **Workspace deletion has no dedicated flow** (found Milestone 7, by
   design). `Workspace::delete()` today hard-deletes and cascades to
   every site/post — correct as a database constraint, but a real
@@ -99,6 +102,28 @@ items are added, resolved, or reprioritized; not a chronological log
   "Version Detection" section for the full accounting of what is and
   isn't obtainable today. Revisit if a WP Studio companion plugin ever
   gets built (see the ADR's Future Extensibility).
+- **`WordPressPostMapper::upsert()` runs one lookup query per
+  WordPress item, not a batch operation** (found Milestone 10, by
+  design — see
+  [[0008-content-synchronization]](adr/0008-content-synchronization.md)'s
+  Performance section). Up to ~100 `SELECT` queries per page at
+  today's `per_page=100`. Not a measured problem at today's real usage
+  (manual, user-triggered sync against a handful of connected sites);
+  revisit with a real batch-upsert redesign once a real workspace's
+  post volume makes it one.
+- **Content sync is fully synchronous, bounded to 20 pages (2,000
+  posts) per call** (found Milestone 10, by design). A safety cap on a
+  single blocking HTTP request, not a real product limit — repeated
+  syncs don't re-process hash-unchanged content, so this is
+  self-correcting today, not data loss. Named as the exact seam
+  Milestone 11 (Background Jobs & Queues) removes; see the ADR's
+  Future Evolution section.
+- **Content sync fetches only post metadata, no post body/content**
+  (found Milestone 10, by design). Title, mapped status, dates, and
+  the public URL are stored; the raw HTML body isn't fetched or
+  persisted. Storing it ahead of an actual editing/Publishing feature
+  needing it would be speculative — see the ADR's Rejected
+  Alternatives.
 
 ### Low Priority
 
@@ -485,6 +510,55 @@ has nothing to do with whether the connection itself is valid,
 punishing the common case (a non-admin Application Password) to
 simplify a small amount of code.
 
+### Milestone 10 (Content Synchronization Platform)
+
+**1. Resolving a pre-existing domain collision before writing any sync
+code.** *Problem:* `Post` had existed since Milestone 7 with full CRUD
+but zero frontend consumers — this milestone's brief asked to sync
+WordPress posts into "the posts table" without addressing whether a
+synced post and a manually-created one are the same kind of thing.
+*Chosen solution:* extended the existing `posts` table with nullable
+sync-tracking columns rather than building a parallel table, reasoning
+explicitly through every existing and future consumer (`PostController`,
+`PostPolicy`, `PostResource`, a not-yet-built Publishing milestone) and
+concluding they all treat "a post" as one concept regardless of
+origin. *Why this matters for an interview answer:* a milestone brief
+naming a table by its plural noun ("the posts table") is not the same
+as the brief having already decided the data model — surfacing and
+deciding a genuine schema question the brief left implicit, before
+writing a migration, is exactly what an architecture-review stage is
+for.
+
+**2. Building a generic engine instead of a generic schema.**
+*Problem:* the brief required the sync layer to generalize to future
+Pages/Media/Categories/Tags without hardcoding "Posts" — the naive
+reading of that requirement is "design one schema that fits every
+content type." *Chosen solution:* recognized this as the identical
+trap a prior milestone's ADR had already named and rejected for an
+unrelated table ("AI Jobs" — guessing a schema before a second real
+case exists to validate it against). Put the genericity in the
+*orchestrator* (`ContentSyncService` knows only about a small
+`ContentTypeMapper` contract, never about "posts") and left the schema
+concrete, one mapper at a time. *Why this matters for an interview
+answer:* "make it generic" is frequently satisfied by fixing the
+*process* and deferring the *data shape*, not by guessing the data
+shape further upfront — recognizing which axis a requirement is
+actually about is the harder, more valuable part of the decision.
+
+**3. Choosing a content hash over a timestamp for idempotency, and
+proving the choice with a test that would fail under the timestamp-only
+alternative.** *Problem:* "avoid duplicate imports, support repeat
+synchronization" could be satisfied by comparing WordPress's own
+`modified_gmt` against a stored value. *Chosen solution:* store both,
+but gate the actual skip/update decision on a sha256 hash of the
+mapped, change-relevant fields — resilient to a WordPress site's clock
+being wrong or a `modified_gmt` that wasn't bumped for some reason.
+*Why this matters for an interview answer:* trusting a single
+external system's self-reported timestamp as your only correctness
+signal is a common, easy-to-miss fragility — a hash comparison
+degrades gracefully even when the upstream signal you'd naively rely
+on turns out to be unreliable.
+
 ---
 
 ## Resume Highlights
@@ -580,6 +654,84 @@ to real, shipped, verified work.
 - Built the application's first dynamic/nested frontend route and used
   it to resolve a previously-deferred navigation UX gap (parent-route
   highlighting for nested pages).
+
+### Milestone 10 (Content Synchronization Platform)
+
+- Designed and built a generic, extensible content-synchronization
+  engine (a mapper-contract abstraction over a fetch/map/hash/upsert
+  orchestrator) so a third-party integration's synchronization logic
+  is reusable across future content types without rewriting the
+  orchestration layer — validated by implementing the first concrete
+  content type (WordPress posts) against it.
+- Implemented idempotent, hash-based change detection for external
+  data synchronization (not a timestamp heuristic alone), preventing
+  duplicate imports on repeat sync runs and correctly distinguishing
+  "no change" from "changed" even when an upstream system's own
+  modification timestamp can't be fully trusted — verified directly in
+  tests proving zero duplicate rows and exactly one update on a
+  detected change.
+- Resolved a real schema-design question (whether externally-synced
+  content and internally-authored content belong in one table or two)
+  by tracing every existing and future consumer of the affected model,
+  extending an existing production table rather than introducing a
+  parallel one and the consumer-side duplication that would have
+  followed.
+- Extended an existing typed external-API client with a new operation
+  (paginated collection fetching) by refactoring shared response-
+  validation logic into a single reusable method, avoiding duplicated
+  HTTP-handling code across two different request shapes.
+- Reused an existing, already-tenant-scoped REST endpoint for a new
+  feature's read path instead of building a parallel one, after
+  tracing that the existing endpoint's query logic already covered the
+  new requirement — a deliberate "extend, don't duplicate" call over
+  literally following an example route list.
+- Grew the backend automated test suite to 83 passing tests, including
+  dedicated coverage for idempotency, update detection, duplicate-
+  import prevention, and authorization; verified the feature's
+  external-failure path live in a real browser against a production
+  build (a genuinely unreachable external host), confirming a
+  synchronous failure correctly surfaces through the same error-display
+  path an unrelated, previously-built feature already used.
+
+---
+
+## 2026-07-14 — `Http::fake()` called twice mid-test doesn't override the first call
+
+**Problem.** A test asserting that re-syncing changed WordPress content
+produces an `updated` result (not `created`/`skipped`) failed with the
+*first* sync's fixture data still active during the *second* sync call
+— `skipped: 2` instead of the expected `updated: 1`, even though the
+test called `fakeWordPressPostsCollection()` then, after the first
+sync, a second helper returning different fixture data before the
+second sync.
+
+**Investigation.** Laravel's `Http::fake()` accepts an array of URL-
+pattern → response rules and can be called multiple times per test —
+documented as additive, but the actual matching behavior when two
+calls register a rule for the *same* pattern is first-registered-wins,
+not last-registered-wins. The second call's rule for
+`*/wp-json/wp/v2/posts*` was silently never consulted; the first
+call's rule kept resolving every subsequent request matching that
+pattern for the rest of the test.
+
+**Decision.** Replaced the two separate `Http::fake()` calls with one
+call using `Http::sequence()->push(...)->push(...)` for the single URL
+pattern under test — sequences are explicitly ordered and exist for
+exactly this "different response on each successive call to the same
+endpoint" case, unlike two independent `Http::fake()` calls.
+
+**Outcome.** The update-detection test passes deterministically; the
+now-unused single-response fixture helper was deleted rather than left
+as dead code once the sequence-based version replaced its only call
+site.
+
+**Lessons learned.** "Additive" and "last call wins" are not the same
+guarantee — when a mocking API documents that repeated setup calls
+merge rather than replace, check specifically what happens on a
+pattern collision before assuming later calls in test order take
+precedence, especially for any test that intentionally changes a mock's
+behavior partway through (before/after assertions around a state
+change are exactly the shape most likely to trigger this).
 
 ---
 

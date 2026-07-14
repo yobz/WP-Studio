@@ -1,6 +1,7 @@
 "use client";
 
 import type * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 
@@ -19,6 +20,8 @@ import {
   useRefreshMetadata,
   useVerifyConnection,
 } from "@/features/wordpress/hooks/use-site-connection";
+import { SyncButton } from "@/features/wordpress/components/sync-button";
+import { SyncSummary } from "@/features/wordpress/components/sync-summary";
 import { ApiError } from "@/lib/api-client";
 
 interface SiteDetailProps {
@@ -88,7 +91,16 @@ function SiteDetail({ siteId }: SiteDetailProps) {
         title={site.name}
         description={site.url ?? undefined}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href={`/wordpress/${site.id}/posts`} />}
+              nativeButton={false}
+            >
+              View Posts
+            </Button>
+            <SyncButton siteId={site.id} />
             <Button
               variant="outline"
               size="sm"
@@ -152,33 +164,36 @@ function SiteDetail({ siteId }: SiteDetailProps) {
         </Typography>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Site Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <DetailField
-              label="WordPress Version"
-              value={site.wordpress_version}
-            />
-            <DetailField label="PHP Version" value={site.php_version} />
-            <DetailField label="Active Theme" value={site.theme} />
-            <DetailField label="Plugins" value={site.plugin_count} />
-            <DetailField label="Users" value={site.user_count} />
-            <DetailField label="Timezone" value={site.timezone} />
-            <DetailField label="Language" value={site.language} />
-            <DetailField
-              label="Plugin Updates"
-              value={
-                site.plugin_updates_available === 0
-                  ? "Up to date"
-                  : `${site.plugin_updates_available} available`
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Site Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <DetailField
+                label="WordPress Version"
+                value={site.wordpress_version}
+              />
+              <DetailField label="PHP Version" value={site.php_version} />
+              <DetailField label="Active Theme" value={site.theme} />
+              <DetailField label="Plugins" value={site.plugin_count} />
+              <DetailField label="Users" value={site.user_count} />
+              <DetailField label="Timezone" value={site.timezone} />
+              <DetailField label="Language" value={site.language} />
+              <DetailField
+                label="Plugin Updates"
+                value={
+                  site.plugin_updates_available === 0
+                    ? "Up to date"
+                    : `${site.plugin_updates_available} available`
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <SyncSummary siteId={site.id} />
+      </div>
     </div>
   );
 }

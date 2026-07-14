@@ -505,23 +505,91 @@ app, which also resolved a standing deferred decision: `AppSidebar`'s
 disconnect/remove actions all live on the detail page, backed by
 TanStack Query mutations that invalidate the sites list on completion.
 
+## Content Synchronization Platform (Milestone 10)
+
+**Real content, at last.** `POST /api/v1/sites/{site}/sync` pulls a
+connected site's real WordPress posts via `/wp-json/wp/v2/posts` and
+persists them locally — the first time this application reads content
+back from an external WordPress site rather than only connection
+metadata. Full reasoning, every alternative considered, and the
+security/performance model in
+`docs/adr/0008-content-synchronization.md`.
+
+**`Post` finally has a frontend.** `Post`/`PostController` have
+existed since Milestone 7 (full CRUD, Policy, Resource) but never had
+a UI. This milestone's real question wasn't "how do we model synced
+content" in isolation — it was whether a WordPress-synced post belongs
+in the same table as a manually-created one. Decided yes: `posts`
+gained nullable sync-tracking columns (`wordpress_post_id`,
+`wordpress_modified_at`, `wordpress_url`, `sync_status`, `sync_hash`,
+`last_synced_at`) rather than a parallel table, so every existing and
+future consumer of `Post` treats both origins as the same domain
+concept.
+
+**A generic sync engine, one concrete content type.** New
+`App\Services\ContentSync\` — `ContentSyncService` is a generic
+orchestrator (fetch → map → hash → upsert → report) parameterized by a
+small `ContentTypeMapper` contract; `WordPressPostMapper` is the only
+implementation this milestone builds. A future Pages/Media/Categories/
+Tags sync is a new mapper plus whatever local table shape that content
+type needs — zero changes to the orchestrator. Deliberately not a
+generic polymorphic content table now — the same "don't guess a schema
+before a second real content type exists" discipline
+`docs/adr/0005-domain-model.md` already applied to deferring the "AI
+Jobs" table.
+
+**Idempotent by content hash, not just a timestamp.** Every sync run
+computes a hash of each item's mapped, change-relevant fields and
+compares it against the stored `sync_hash` before writing — unchanged
+content is skipped entirely (no write), not just assumed unchanged
+from a WordPress-reported timestamp alone. A unique
+`(site_id, wordpress_post_id)` index is the actual duplicate-import
+guard. Verified directly: re-syncing identical content twice produces
+zero new rows on the second run; changing one field produces exactly
+one update, not a duplicate.
+
+**Reuses the existing `Post` read surface, doesn't duplicate it.**
+`GET /api/v1/posts?site_id={id}` (built in Milestone 7, already
+workspace-scoped) is what the frontend's Posts list actually calls —
+no new nested `sites/{site}/posts` route was added, since one would
+have duplicated `PostController::index`'s existing, already-correct
+query for a cosmetic URL difference. The only genuinely new routes are
+`POST /sites/{site}/sync` and `GET /sites/{site}/sync-status`, neither
+of which had an existing home.
+
+**Frontend.** `/wordpress/[id]/posts` and
+`/wordpress/[id]/posts/[postId]` — this app's second level of route
+nesting, following the pattern `/wordpress/[id]` established in
+Milestone 9. Four new components (`PostsTable`, `PostDetail`,
+`SyncButton`, `SyncSummary`) compose only existing primitives — no new
+UI primitive was needed. `SyncButton` and `SyncSummary` coordinate
+entirely through TanStack Query cache invalidation, the same mechanism
+`useDisconnectSite`/`useVerifyConnection` already use.
+
+**Synchronous today, named seam for Milestone 11.**
+`ContentSyncService::sync()` is unchanged by a future move to a queued
+job — a worker calling it instead of a controller calling it inline is
+the entire migration. `SiteStatus::Syncing`, present in the enum since
+Milestone 6/7 but never used until a queued job can meaningfully
+report "in progress," is the natural status that job sets.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
   `ghost`, `link` on `Badge`) than `common/` components currently use —
   intentional; they're general-purpose primitives, and unused variants
   cost nothing until a real use case needs them.
-- No automated component/route tests yet (Testing is Milestone 10).
-  Every design-system and shell change is verified manually: a real
-  browser (Playwright) across breakpoints/interactions, plus an
-  `axe-core` audit — widened as of Milestone 4.1 to include
-  `best-practice`-tagged rules, not just strict WCAG-tagged ones, after
-  the narrower scope missed a real nested-landmark defect in Milestone
-  4 (see `docs/ENGINEERING_JOURNAL.md`) — run against a temporary
-  preview (or the real shell routes) and confirmed clean before the
-  milestone is called done. Real, repeated, and has caught genuine
-  defects every time it's been run — but it's manual, not a CI gate,
-  until Milestone 10/11.
+- No automated component/route tests yet (Frontend Testing is
+  Milestone 15). Every design-system and shell change is verified
+  manually: a real browser (Playwright) across breakpoints/
+  interactions, plus an `axe-core` audit — widened as of Milestone 4.1
+  to include `best-practice`-tagged rules, not just strict WCAG-tagged
+  ones, after the narrower scope missed a real nested-landmark defect
+  in Milestone 4 (see `docs/ENGINEERING_JOURNAL.md`) — run against a
+  temporary preview (or the real shell routes) and confirmed clean
+  before the milestone is called done. Real, repeated, and has caught
+  genuine defects every time it's been run — but it's manual, not a CI
+  gate, until Milestone 15/18.
 - No "skip to content" link ahead of the sidebar navigation. Not
   flagged by `axe-core`'s WCAG 2.4.1 (Bypass Blocks) check — satisfied
   here by proper `<nav>`/`<main>` landmark structure, which assistive
@@ -575,14 +643,30 @@ TanStack Query mutations that invalidate the sites list on completion.
   design) — a real, named limitation, deferred to Milestone 19 to keep
   the check network-free and deterministic in tests. See the ADR's
   Security section.
-- No Content Management, Publishing, or Background Jobs yet — `Site`
-  now has a real, verified connection to build on, but nothing writes
-  to a connected WordPress site yet (that's Content Management and
-  Publishing, both future milestones per `docs/ROADMAP.md`).
+- ~~No Content Management, Publishing, or Background Jobs yet~~
+  **Partially resolved, Milestone 10** — content *synchronization*
+  (reading WordPress posts into WP Studio) is real now; *Publishing*
+  (writing WP Studio changes back to WordPress) and Background Jobs
+  remain future milestones per `docs/ROADMAP.md`.
+- Content sync fetches only posts, only title/status/dates/URL/sync
+  metadata — no post body/content is fetched or stored (Milestone 10,
+  by design). Storing full content ahead of an actual editing/
+  Publishing feature needing it would be speculative scope; see
+  `docs/adr/0008-content-synchronization.md`'s Rejected Alternatives.
+- Content sync is fully synchronous — a single `POST .../sync` request
+  blocks until every page of posts is fetched and persisted, bounded
+  at 20 pages (2,000 posts) per call as a safety cap, not a real
+  product limit (Milestone 10, by design). Named as the concrete seam
+  Milestone 11 (Background Jobs & Queues) replaces; see the ADR's
+  Future Evolution section.
+- `WordPressPostMapper::upsert()` runs one lookup query per WordPress
+  item rather than a batch operation — up to ~100 queries per page at
+  today's `per_page=100` (Milestone 10, by design, not yet a measured
+  problem at real usage). See the ADR's Performance section.
 
 ## Status
 
-Milestone 9 (WordPress Integration Platform) complete. See
+Milestone 10 (Content Synchronization Platform) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

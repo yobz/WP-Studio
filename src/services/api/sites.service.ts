@@ -18,6 +18,7 @@ export interface ApiSite {
   storage_limit_mb: number;
   last_connected_at: string | null;
   last_checked_at: string | null;
+  last_synced_at: string | null;
   connection_error: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -28,6 +29,25 @@ export interface ConnectSitePayload {
   url: string;
   wp_username: string;
   application_password: string;
+}
+
+export interface SyncResult {
+  content_type: string;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: { wordpress_id: number | null; message: string }[];
+  started_at: string;
+  finished_at: string;
+}
+
+export interface SyncStatistics {
+  content_type: string;
+  total_synced: number;
+  last_synced_at: string | null;
+  site_status: ApiSite["status"];
+  connection_error: string | null;
 }
 
 export async function getSites(params?: {
@@ -70,4 +90,14 @@ export async function refreshSiteMetadata(id: number): Promise<ApiSite> {
 
 export async function deleteSite(id: number): Promise<void> {
   await apiFetch<null>(`/api/v1/sites/${id}`, { method: "DELETE" });
+}
+
+export async function syncSite(id: number): Promise<SyncResult> {
+  return apiFetch<SyncResult>(`/api/v1/sites/${id}/sync`, {
+    method: "POST",
+  });
+}
+
+export async function getSyncStatus(id: number): Promise<SyncStatistics> {
+  return apiFetch<SyncStatistics>(`/api/v1/sites/${id}/sync-status`);
 }

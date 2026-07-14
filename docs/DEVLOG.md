@@ -1,5 +1,117 @@
 # Devlog
 
+## 2026-07-14 — Milestone 10: Content Synchronization Platform
+
+The platform reads real content back from a connected WordPress site
+for the first time — previously it only ever wrote connection
+metadata (Milestone 9). A generic sync engine, one concrete content
+type (Posts), and the first UI `Post` (built Milestone 7) has ever
+had. Full reasoning in `docs/adr/0008-content-synchronization.md`;
+this entry is the what.
+
+**Redefined mid-roadmap, by explicit brief.** `docs/ROADMAP.md`'s
+Milestone 10 slot previously read "API Completion & Frontend
+Migration." This milestone's brief explicitly redefined it as Content
+Synchronization instead — the displaced original scope is preserved,
+not dropped, as the new Milestone 10.1.
+
+**A pre-existing collision this milestone had to resolve first.**
+`Post`/`PostController` have existed since Milestone 7 — full CRUD, a
+Policy, a Resource — but never had a frontend consumer. The real
+architecture question wasn't "how do we model synced content" in
+isolation, it was whether a WordPress-synced post belongs in the same
+table as one a user types into WP Studio directly. Decided yes:
+`posts` gained nullable sync-tracking columns rather than a parallel
+table, so every existing and future `Post` consumer treats both
+origins as the same domain concept.
+
+**A generic engine, not a generic schema.** The brief required this
+layer to generalize to future Pages/Media/Categories/Tags without
+hardcoding "Posts." Built the genericity into the *engine*
+(`ContentSyncService` knows nothing about "posts," only about a small
+`ContentTypeMapper` contract it's handed) rather than a polymorphic
+content table — the identical trap `docs/adr/0005-domain-model.md`
+already named and avoided for the "AI Jobs" table: guessing a
+one-size-fits-all schema before a second real content type exists to
+validate it against would likely mean a breaking migration the moment
+Pages or Media actually gets built. `WordPressPostMapper` is the only
+implementation today; a future Pages sync is a new mapper, zero
+changes to the orchestrator.
+
+**Idempotent by content hash, not a timestamp heuristic.** Every sync
+run computes a sha256 hash of each item's mapped, change-relevant
+fields and compares it against the stored `sync_hash` before writing —
+unchanged content is skipped entirely, not assumed unchanged from a
+single external timestamp field alone. A unique
+`(site_id, wordpress_post_id)` index is the actual duplicate-import
+guard (SQL unique indexes don't constrain `NULL` against `NULL`, so
+manually-created posts are unaffected). Verified directly: re-syncing
+identical fixture data twice produces zero new rows on the second
+call; changing one field produces exactly one update.
+
+**Reused the existing `Post` read surface instead of duplicating it.**
+The brief's own example route list included a nested
+`GET /sites/{site}/posts`. `PostController::index` (Milestone 7)
+already scopes to the current workspace's sites and already accepts a
+`site_id` filter — a nested alias would have duplicated that query for
+a cosmetic URL difference. Only two genuinely new routes:
+`POST /sites/{site}/sync` and `GET /sites/{site}/sync-status`.
+
+**`WordPressClientContract` gained a second method, deliberately.**
+`fetchCollection()` reuses `HttpWordPressClient`'s existing private
+request/retry/timeout/auth machinery (extracted a shared
+`assertSuccessfulJsonArray()` helper so `fetchRequired()` and
+`fetchCollection()` don't duplicate response-validation logic).
+Milestone 9 kept the contract to one method deliberately ("verify" and
+"refresh" were the same operation wearing two names) — fetching a
+single site's metadata and fetching a paginated content collection are
+genuinely different operations, so a second method here doesn't
+violate that precedent, it's the same discipline applied correctly to
+a case that actually needs two.
+
+**Failure handling reuses Milestone 9's pattern exactly.** A total
+failure to reach WordPress at all marks the site `Error` with a stored
+`connection_error` — the identical mechanism
+`SiteConnectionService::syncFromWordPress()` already uses for verify/
+refresh failures, not a parallel one. A single item failing to map
+(malformed WordPress JSON) is recorded in the sync result and the
+batch continues, without touching `Site.status` — the connection
+itself is fine even if one item wasn't.
+
+**`SiteStatus::Syncing`, unused since Milestone 6/7, stays unused.**
+Flagged during this milestone's own architecture review as a signal
+sync had been anticipated. A synchronous, single-request sync doesn't
+have a meaningful window to report "in progress" to a second observer
+— the request that triggered it is the only thing waiting. Left in
+place as the value a future queued sync (Milestone 11) will actually
+set.
+
+**Frontend.** `/wordpress/[id]/posts` and `/wordpress/[id]/posts/[postId]`
+— this app's second level of route nesting, following the pattern
+`/wordpress/[id]` established in Milestone 9. Four new components
+(`PostsTable`, `PostDetail`, `SyncButton`, `SyncSummary`) compose only
+existing primitives — no new UI primitive needed. `SyncButton` and
+`SyncSummary` coordinate entirely through TanStack Query cache
+invalidation (`useSyncSite`'s `onSettled` invalidates the sites list,
+the site's posts, and its sync-status), the same mechanism
+`useDisconnectSite`/`useVerifyConnection` already use.
+
+**Verified end-to-end against a real graceful-failure path, live in a
+browser.** No real WordPress server exists in this environment (same
+constraint noted since Milestone 9), so the success path is covered by
+9 dedicated Pest tests mocking `Http::fake()` (create, idempotent
+re-sync, update detection, trash-skipping, mapper correctness,
+credential-required, authorization, workspace isolation, sync-status).
+The failure path was driven live in a production-build browser against
+the seeded `Acme Blog` site's fake `.example.com` domain: clicking
+"Sync Content" produced a real `WordPressConnectionException`, flipped
+the site to `Connection Error` with a stored reason, and rendered that
+error in both the sync button's own inline message and the existing
+site-level error banner — the same display path Milestone 9's verify/
+refresh failures already use.
+
+---
+
 ## 2026-07-14 — Milestone 9: WordPress Integration Platform
 
 Real WordPress connections — the platform now actually talks to
