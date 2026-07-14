@@ -31,5 +31,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('wordpress-connection', function (Request $request) {
             return Limit::perMinute(10)->by((string) $request->user()?->id);
         });
+
+        RateLimiter::for('media-upload', function (Request $request) {
+            return Limit::perMinute(20)->by((string) $request->user()?->id);
+        });
     }
 }

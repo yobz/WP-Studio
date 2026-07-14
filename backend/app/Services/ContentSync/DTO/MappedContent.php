@@ -8,5 +8,6 @@ final readonly class MappedContent
         public int $wordpressId,
         public array $attributes,
         public string $hash,
+        public ?int $featuredMediaId = null,
     ) {}
 }

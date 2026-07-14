@@ -101,6 +101,17 @@ function PostDetail({ postId }: PostDetailProps) {
         <StatusBadge status={meta.badge}>{meta.label}</StatusBadge>
       </div>
 
+      {post.featured_image ? (
+        <div className="bg-muted max-w-sm overflow-hidden rounded-lg">
+          {/* eslint-disable-next-line @next/next/no-img-element -- external/local storage URLs, not optimizable without configuring every possible disk host */}
+          <img
+            src={post.featured_image.url}
+            alt={post.featured_image.alt_text || post.title}
+            className="max-h-64 w-full object-cover"
+          />
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Post Details</CardTitle>

@@ -81,21 +81,31 @@ function PostsTable({ siteId }: PostsTableProps) {
                 key={post.id}
                 className="flex items-center justify-between gap-3 p-4"
               >
-                <div className="flex flex-col gap-0.5">
-                  <Link
-                    href={`/wordpress/${siteId}/posts/${post.id}`}
-                    className="hover:underline focus-visible:underline focus-visible:outline-none"
-                  >
-                    <Typography variant="body">{post.title}</Typography>
-                  </Link>
-                  {post.wordpress_modified_at ? (
-                    <Typography variant="caption">
-                      Modified{" "}
-                      {new Date(
-                        post.wordpress_modified_at,
-                      ).toLocaleDateString()}
-                    </Typography>
+                <div className="flex min-w-0 items-center gap-3">
+                  {post.featured_image ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- external/local storage URLs, not optimizable without configuring every possible disk host
+                    <img
+                      src={post.featured_image.url}
+                      alt=""
+                      className="bg-muted size-10 shrink-0 rounded-md object-cover"
+                    />
                   ) : null}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <Link
+                      href={`/wordpress/${siteId}/posts/${post.id}`}
+                      className="hover:underline focus-visible:underline focus-visible:outline-none"
+                    >
+                      <Typography variant="body">{post.title}</Typography>
+                    </Link>
+                    {post.wordpress_modified_at ? (
+                      <Typography variant="caption">
+                        Modified{" "}
+                        {new Date(
+                          post.wordpress_modified_at,
+                        ).toLocaleDateString()}
+                      </Typography>
+                    ) : null}
+                  </div>
                 </div>
                 <StatusBadge status={meta.badge}>{meta.label}</StatusBadge>
               </li>

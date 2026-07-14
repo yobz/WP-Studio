@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import type { ApiMedia } from "@/services/api/media.service";
 
 export interface ApiPost {
   id: number;
@@ -12,6 +13,7 @@ export interface ApiPost {
   wordpress_url: string | null;
   sync_status: string | null;
   last_synced_at: string | null;
+  featured_image: ApiMedia | null;
   created_at: string | null;
   updated_at: string | null;
 }

@@ -1,5 +1,128 @@
 # Devlog
 
+## 2026-07-15 — Milestone 12: Media Platform & Storage
+
+Every file this application stores — WordPress featured images today,
+avatars/AI images/attachments/reports later — now goes through one
+reusable Media domain instead of each feature inventing its own
+storage code. Full reasoning in `docs/adr/0010-media-platform.md`;
+this entry is the what.
+
+**This milestone introduced a mandatory step for every milestone from
+here forward: an Architecture Drift Review, done before writing any
+code.** Confirmed the codebase was genuinely greenfield for a Media
+domain (no pre-existing `Media`/`Attachment`/`Upload` code anywhere)
+and caught one naming-adjacent risk worth documenting rather than
+fixing: `Site.storage_used_mb`/`storage_limit_mb` (Milestone 6)
+describe the *remote WordPress site's* disk usage, not WP Studio's own
+storage — easy to conflate, now explicitly disambiguated.
+
+**One `Media` table, polymorphically attachable, not a
+WordPress-specific or upload-specific mechanism.** `mediable_type`/
+`mediable_id` + `collection` means any future producer attaches to the
+same table without a schema change — the brief's actual requirement
+("no feature should manage files independently"), not just "add
+upload." Workspace-scoped directly (not derived transitively through
+`mediable`, since a library upload may have no parent yet), hash-
+deduplicated (sha256 — reuses an existing `storage_path` instead of
+writing identical bytes twice), disk-abstracted end to end
+(`MediaService` is the only class that calls `Storage::disk(...)`, no
+raw filesystem calls anywhere in this feature).
+
+**Extends Content Sync, doesn't sit beside it.**
+`WordPressPostMapper::map()` now reads `featured_media` from the raw
+WordPress payload — folded into the existing change-detection hash, so
+an image-only change now correctly produces an `Updated` sync outcome
+instead of a false `Skipped`. `syncFeaturedImage()` (WordPress-post-
+specific logic, not the generic `ContentSyncService` orchestrator)
+dispatches a new `DownloadMediaJob` — full Milestone 11 job shape:
+3 tries, `[10, 30, 60]`s backoff, per-post uniqueness, `SerializesModels`
+— with a guard that no-ops when the same WordPress media ID is already
+attached, and handles removal synchronously (no job needed for a
+delete). `WordPressClientContract` gained one new method, `fetchItem()`,
+generic enough for any future single-resource WordPress fetch, reusing
+`HttpWordPressClient`'s existing internals rather than duplicating
+them.
+
+**A real defect this milestone's own test suite caught before it
+shipped.** Added genuine DB-level unique constraints on the
+polymorphic attachment slot and on `(site_id, source_id)` during
+implementation — then watched a test for "replace a post's featured
+image on re-sync" fail with a real `QueryException`. Root cause:
+`SoftDeletes` makes a row logically gone but physically still present,
+and a unique index has no concept of `deleted_at` — soft-deleting the
+old attachment and inserting the new one collided. Fixed by moving
+both invariants into the service/mapper layer instead (where the
+actual business decision already lived) and, while investigating,
+discovered `posts`' own `(site_id, wordpress_post_id)` unique index
+carries the identical, apparently-never-exercised tradeoff — now a
+named, documented risk instead of a silent one.
+
+**A deliberate deviation from the brief's own example list, not an
+oversight.** The brief named `MediaDTO` as an expected layer. Skipped
+it: `Media` is a real, persisted Eloquent model rendered through an
+API Resource, the same shape `Post`/`Site` already use — a DTO
+mirroring its columns 1:1 would be an unjustified extra layer with no
+data it doesn't already have. Same category of judgment call Milestone
+11 made about not wiring `RefreshSiteMetadataJob` into the manual
+button — following established precedent over a literal instruction
+when they conflict.
+
+**Storage is one env var away from S3/R2/Spaces.** `MEDIA_DISK`
+(default `public`) is deliberately independent of `FILESYSTEM_DISK` —
+so the app's generic default disk changing for some unrelated purpose
+can't accidentally make media private (or vice versa). The `s3` disk
+and `AWS_*` env vars have existed since Laravel's own Milestone 1
+defaults; switching disks requires zero code changes, the actual
+"configuration change, not a code change" property the brief asked
+for.
+
+**Frontend: a real Media Library, and thumbnails where posts already
+live.** `/media` — grid/list toggle, upload (a new `apiUpload()`
+sibling to `apiFetch()` in `api-client.ts`, omitting the JSON
+`Content-Type` header so the browser sets its own multipart boundary),
+a preview dialog with alt-text editing and delete. `PostsTable`/
+`PostDetail` render a featured-image thumbnail when present, zero
+change to either component's existing async states.
+
+**A real, novel accessibility defect, found and fixed during this
+milestone's own verification — not merely audited after the fact.**
+A destructive-variant Delete button placed inside the preview dialog's
+`DialogFooter` failed WCAG AA contrast (4.24:1 against a 4.5:1
+threshold) — the footer's semi-transparent `bg-muted/50` background
+composites differently than the plain page backgrounds this app's two
+other destructive buttons already sit on safely. This exact
+combination had never existed anywhere else in the app. Fixed by
+relocating the button out of the footer, not by overriding the shared
+`Button` component's color tokens for one instance.
+
+**Verified against a real backend, not a mock.** Backend: 120 Pest
+tests passing (up from 103) — real disk writes via `Storage::fake()`,
+real hash-based dedup verified against actual storage paths, a real
+featured-image download/replace/remove cycle against faked WordPress
+HTTP responses (including the defect above, caught live), real
+per-post job uniqueness against the `database` driver. Frontend:
+`typecheck`/`lint`/`build` all clean, including the new `/media` route
+in the production build. Live browser verification (real
+`php artisan serve` + `queue:work` + `npm run start`): uploaded a real
+file, saw it in the grid, opened the preview, edited and saved alt
+text, switched views, deleted it, watched the library correctly return
+to its empty state — zero console errors throughout. `axe-core`: zero
+violations across the Media Library, the preview dialog, the
+Dashboard, and the Posts pages (after the contrast fix above).
+
+**Playwright/Next.js click-navigation quirk, re-encountered, already
+documented — worth re-flagging.** A verification script using
+`locator.click()` on a Next.js `<Link>` silently failed to navigate
+(the URL never changed) — the exact gotcha `SESSION_HANDOFF.md`
+documented back in Milestone 11 ("needs `page.goto()` or a manual
+URL-polling helper, not `page.waitForURL()` with its default
+`waitUntil: 'load'`"). Switching the verification script to
+`page.goto()` for the specific URL resolved it immediately — a
+reminder that this is a real, recurring interaction quirk worth
+checking first the next time a Playwright click-then-navigate step
+behaves unexpectedly, before assuming an app defect.
+
 ## 2026-07-14 — Milestone 11: Background Job & Queue Platform
 
 No expensive operation blocks an HTTP request anymore. Content sync —

@@ -192,6 +192,36 @@ items are added, resolved, or reprioritized; not a chronological log
   if a future milestone needs completion visibility beyond the page the
   user triggered it from (e.g., "notify me even if I've navigated
   away").
+- **No thumbnail or responsive-image generation** (found Milestone 12,
+  by design). Every rendered image — grid, list, preview, post detail
+  — serves the original upload/download at full resolution. Named as
+  Milestone 16 (Performance & Caching)'s natural starting point; see
+  `docs/adr/0010-media-platform.md`.
+- **No virus scanning on uploaded/downloaded media** (found Milestone
+  12, reviewed per the brief's own instruction, explicitly deferred).
+  No scanning service exists in any environment this project runs in
+  today. Deferred to Milestone 19 (Cloud Deployment & Security
+  Hardening), the same category as `queue:work` process supervision.
+- **Media Platform MIME allow-list is images only** (found Milestone
+  12, by design). `config('media.allowed_mimes')` covers `jpg`,
+  `jpeg`, `png`, `gif`, `webp` — `svg` deliberately excluded (a real
+  stored-XSS vector via inline `<script>`). Document/report types the
+  brief names as future producers are a one-line config extension, not
+  built ahead of a real consumer.
+- **No row-level media deduplication or `media_mediable` pivot** (found
+  Milestone 12, by design). Storage-level dedup (reusing bytes already
+  on disk via a content hash) is real; sharing one `Media` row across
+  two independent attachments with separate lifecycles is not — no
+  current feature needs one file backing two attachments
+  simultaneously. See `docs/adr/0010-media-platform.md`'s Alternatives
+  Considered.
+- **`posts`' `(site_id, wordpress_post_id)` unique index carries the
+  same SoftDeletes/uniqueness tradeoff Milestone 12 found and fixed on
+  `media`** (found Milestone 12, newly documented — the underlying
+  code is unchanged since Milestone 10). Not a functional bug today —
+  no current workflow re-creates a soft-deleted post with the same
+  WordPress ID — but a real risk if that scenario ever becomes
+  reachable. See the dated entry below for the full investigation.
 
 ### Low Priority
 
@@ -728,6 +758,77 @@ economy when the two call sites have genuinely different latency
 requirements — reuse should follow the actual need, not the existence
 of the abstraction.
 
+### Milestone 12 (Media Platform & Storage)
+
+**1. A DB-level unique constraint that looked correct, caught silently
+breaking a real workflow by the test suite itself, not by inspection.**
+*Problem:* added genuine unique constraints on the polymorphic
+attachment slot (`mediable_type`/`mediable_id`/`collection`) and on
+`(site_id, source_id)` — the obviously "correct" way to enforce "one
+featured image per post" and "don't re-download the same WordPress
+media twice" at the database layer. A test for replacing a post's
+featured image on re-sync then failed with a real `QueryException`.
+*Investigation:* `SoftDeletes` marks a row `deleted_at` but leaves it
+physically present — a unique index has no concept of that column, so
+soft-deleting the old attachment and inserting the replacement
+collided on the same constraint. Checked whether this was a one-off:
+`posts`' own `(site_id, wordpress_post_id)` unique index carries the
+identical tradeoff, coexisting with its own `SoftDeletes` since
+Milestone 10, apparently never exercised the same way. *Chosen
+solution:* removed both new unique constraints, kept them as plain
+indexes, and enforced the actual invariants in the service/mapper
+layer where the business decision already lived. *Why this matters for
+an interview answer:* a schema constraint that looks obviously correct
+in isolation can still be wrong once a cross-cutting concern
+(`SoftDeletes`) interacts with it — and the discipline of asking "does
+this same shape already exist elsewhere, unexercised" turned a
+one-off fix into a documented, project-wide risk instead of a
+quietly-patched local bug.
+
+**2. A silent route-model-binding failure, not an error, from a
+one-word English pluralization mismatch.** *Problem:* every
+`GET`/`PATCH`/`DELETE /media/{media}` request failed authorization with
+"call to a member function `hasMember()` on null" — the resolved model
+had an *empty* attributes array, not a missing one, meaning no
+exception, no 404, no obvious signal something was wrong before the
+policy check ran. *Investigation:* `Route::apiResource('media', ...)`
+singularizes the resource name for its URI parameter — and English
+"media" is already the plural of "medium," so Laravel generated
+`{medium}`, not `{media}`. The controller's methods type-hinted `Media
+$media` (matching the model, not the mis-singularized route
+parameter), so implicit binding's name-matching silently failed and
+Laravel's container just constructed a blank `new Media()` for the
+type-hinted parameter instead of raising any error. *Chosen solution:*
+`->parameters(['media' => 'media'])` on the resource route, forcing
+the URI parameter to match the controller's actual variable name.
+*Why this matters for an interview answer:* "route model binding
+failed" doesn't always mean a 404 or a thrown exception — a name
+mismatch between convention-generated routing and a hand-written
+controller signature can produce a fully-constructed, silently-empty
+object instead, which is a much harder failure mode to recognize from
+the symptom alone (a null-pointer-style error deep inside unrelated
+business logic) without tracing back to the actual route definition.
+
+**3. Introducing a mandatory Architecture Drift Review before writing
+any code, and finding it earned its cost immediately.** *Problem:*
+five milestones into extending an increasingly complex system, the
+risk of quietly duplicating an existing abstraction or violating an
+already-accepted decision grows with every addition — and nothing in
+the existing workflow forced that check before implementation started.
+*Chosen solution:* added a dedicated review step, run first, checking
+specifically for duplicate services, overlapping responsibilities, and
+whether existing decisions still held. *Outcome:* confirmed the new
+domain was genuinely greenfield (no prior partial implementation to
+build on or conflict with) and caught a real naming-adjacent
+ambiguity (`Site.storage_used_mb` vs. this milestone's own storage
+concern) before it could cause confusion later, resolved by
+documentation in minutes rather than by a future session's
+investigation. *Why this matters for an interview answer:* a process
+change is only worth adopting permanently if it catches something a
+skilled engineer moving fast would plausibly have missed — this one
+did, on its very first run, which is the actual argument for keeping
+it as a standing step rather than a one-off exercise.
+
 ---
 
 ## Resume Highlights
@@ -932,6 +1033,179 @@ to real, shipped, verified work.
   synchronous user-facing action where async would add latency without
   real benefit, resisting the temptation to force-fit a new
   abstraction everywhere it technically could apply.
+
+### Milestone 12 (Media Platform & Storage)
+
+- Designed and built a reusable, polymorphically-attachable media/file
+  storage domain (Laravel) serving multiple current and future
+  producers (third-party API-sourced assets, direct user uploads) from
+  one schema and one service, backed by a disk abstraction requiring
+  only a configuration change — not a code change — to migrate to
+  cloud object storage.
+- Implemented content-hash-based file deduplication at the storage
+  layer, preventing redundant disk writes across independent uploads
+  of identical content, verified directly by asserting two separate
+  uploads share one physical file on disk.
+- Diagnosed and fixed a database constraint conflicting with an
+  existing soft-delete pattern, caught by the automated test suite
+  before release — traced the root cause to a general interaction
+  between unique indexes and soft-deletion (not specific to the new
+  feature), identified an identical, previously unexercised risk
+  already present elsewhere in the schema, and resolved both by moving
+  the invariant into the application layer with full documentation of
+  the tradeoff.
+- Diagnosed a silent HTTP routing failure (a convention-based
+  framework tool auto-generating a URL parameter name that didn't
+  match the controller's own signature) that produced a fully-formed
+  but empty object instead of any error — traced through the
+  framework's own resolution internals rather than guessing, and fixed
+  with a one-line, explicit route configuration.
+- Extended an existing external-API integration and its established
+  asynchronous job pattern to a new capability (binary file download)
+  without modifying either's core architecture, including reusing an
+  existing security control (an SSRF guard built for a different
+  feature) for a new outbound request path handling third-party-
+  supplied URLs.
+- Introduced a new mandatory pre-implementation architecture review
+  step for the project, and demonstrated its value on first use by
+  catching a real (if minor) documentation gap before implementation
+  began, rather than treating the process addition as a formality.
+- Found and fixed a genuine WCAG AA color-contrast failure during
+  interactive accessibility testing (not just a static audit) — a
+  component-composition interaction (a semi-transparent shared
+  background under a themed button) invisible from either piece in
+  isolation — and resolved it by reworking the interaction rather than
+  overriding shared design-system tokens. Grew the backend automated
+  test suite to 120 passing tests with zero regressions.
+
+---
+
+## 2026-07-15 — A DB-level unique index doesn't know about `SoftDeletes`
+
+**Problem.** A test for "replacing a post's WordPress featured image
+on re-sync" failed with a real `QueryException` — inserting the new
+`Media` attachment row after soft-deleting the old one for the same
+post violated a unique constraint on
+`(mediable_type, mediable_id, collection)`.
+
+**Investigation.** The constraint was added deliberately, during
+implementation, as the obvious way to enforce "one featured image per
+post" at the database layer. `SoftDeletes` sets `deleted_at` but never
+removes the row — a unique index has no awareness of that column, so
+the "old" (soft-deleted) row still physically occupies the constraint
+for `(Post, 'featured_image')`, and the new row's insert collides with
+it. Checked whether this was specific to the new `media` table:
+`posts`' own `(site_id, wordpress_post_id)` unique index (Milestone
+10) coexists with `Post`'s own `SoftDeletes` and carries the identical
+tradeoff — apparently never exercised, since no existing workflow
+re-creates a soft-deleted post with the same WordPress ID.
+
+**Decision.** Removed the new unique constraints (on the polymorphic
+attachment slot, and on `(site_id, source_id)`) and kept them as plain
+indexes. The actual invariants — one attachment per slot, no duplicate
+downloads of the same external resource — are enforced in
+`WordPressPostMapper::syncFeaturedImage()` and `DownloadMediaJob`
+instead, which is where the business logic already lived and which
+already reasons about "current" vs. "replaced" attachments correctly.
+
+**Outcome.** All three affected tests (replace, remove, no-duplicate-
+download) pass. The equivalent, previously-unnoticed risk on `posts`
+is now a named item in `docs/ENGINEERING_JOURNAL.md`'s Future Backlog
+rather than a silent one.
+
+**Lessons learned.** A unique constraint that looks obviously correct
+in isolation can still be wrong once a cross-cutting concern
+(`SoftDeletes`) is layered on top — the two features are each
+individually standard, well-understood Laravel patterns, but their
+combination has a real gap neither one's documentation calls out on
+its own. Worth explicitly checking "does this table also use
+SoftDeletes" before adding a unique constraint to a new column
+combination, and worth checking whether an *existing* table already
+has the same combination unexercised, once the interaction is
+understood once.
+
+---
+
+## 2026-07-15 — `Route::apiResource()` silently mis-binds when English pluralization surprises you
+
+**Problem.** Every request to `GET`/`PATCH`/`DELETE /api/v1/media/{id}`
+failed authorization with "call to a member function `hasMember()` on
+null" — thrown from inside `MediaPolicy`, on `$media->workspace`. No
+exception was thrown resolving `$media` itself, and no 404 occurred;
+the policy method received a `Media` instance that looked entirely
+normal until its relation was accessed.
+
+**Investigation.** Dumped the resolved model's raw attributes directly
+inside the policy method rather than guessing further — `getAttributes()`
+returned an empty array. The model wasn't the row at all; it was a
+freshly-constructed, never-hydrated `new Media()`. `Route::apiResource('media',
+MediaController::class)` singularizes the resource name to generate
+its URI parameter — and English "media" is already the plural of
+"medium," so Laravel generated `{medium}`, not `{media}` (confirmed
+via `php artisan route:list --path=media`). The controller's methods
+type-hint `Media $media` (matching the *model*, correctly), so
+Laravel's implicit route-model-binding — which matches by the
+controller parameter's *variable name* against the route's captured
+parameter name — found no `medium` variable to bind, silently declined
+to substitute anything, and the container fell back to constructing a
+blank instance for the type-hinted class instead of raising any error.
+
+**Decision.** Added `->parameters(['media' => 'media'])` to the
+resource route registration, forcing the URI parameter to `{media}`
+regardless of the resource name's grammatically-correct singular form.
+
+**Outcome.** `route:list` confirms `{media}`; every `MediaController`
+action resolves the real row and its relations correctly. Verified
+directly (not just re-running the failing test) by dumping the route
+table before and after.
+
+**Lessons learned.** "Route model binding failed" doesn't always
+surface as a 404 or a thrown exception — a variable-name mismatch
+between a convention-generated route parameter and a hand-written
+controller signature can produce a fully-constructed, silently-empty
+object instead, which then fails much later and further from the real
+cause (a null-relation error deep inside authorization logic, not a
+routing error). "Media" is a specific, known English-inflector trap
+(it's already plural — "medium" is the singular) worth remembering
+the next time a resource name ends in a word that might already be a
+plural form; `php artisan route:list` is the fastest way to confirm
+what a resource route's parameter actually got named, rather than
+assuming it matches the resource name.
+
+---
+
+## 2026-07-15 — A Playwright click on a Next.js `<Link>` silently didn't navigate (recurrence)
+
+**Problem.** A verification script clicked a post title link, waited,
+then asserted on the resulting page — and got the *previous* page's
+content back (a stale `<h1>`), with the URL confirmed unchanged after
+the click.
+
+**Investigation.** This is the same interaction quirk
+`docs/SESSION_HANDOFF.md` already documented during Milestone 11's own
+verification: Next.js App Router client-side navigation and
+Playwright's default `locator.click()` + `waitForURL()` combination
+don't reliably observe each other the way a full page navigation
+does. Confirmed directly by checking `page.url()` immediately after
+the click — it hadn't changed at all, ruling out a timing race and
+confirming the click genuinely never triggered navigation as far as
+the test could observe.
+
+**Decision.** Replaced the click-then-wait pattern with a direct
+`page.goto()` to the target URL for this verification step, matching
+the workaround already recorded from Milestone 11.
+
+**Outcome.** The page loaded correctly on the first attempt with the
+real content.
+
+**Lessons learned.** This is now the *second* time this exact
+interaction has cost investigation time despite being previously
+documented — worth escalating from "a note in a session-snapshot
+file" to this permanent journal entry, and worth checking first (not
+last) the next time a Playwright click-then-navigate step in this
+project produces stale content instead of assuming a new app defect.
+A `SESSION_HANDOFF.md` entry gets overwritten every milestone; a real,
+recurring gotcha belongs somewhere durable.
 
 ---
 

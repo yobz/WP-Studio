@@ -21,6 +21,10 @@ class PostResource extends JsonResource
             'wordpress_url' => $this->wordpress_url,
             'sync_status' => $this->sync_status,
             'last_synced_at' => $this->last_synced_at?->toIso8601String(),
+            'featured_image' => $this->whenLoaded(
+                'featuredImage',
+                fn () => $this->featuredImage ? new MediaResource($this->featuredImage) : null,
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

@@ -22,6 +22,11 @@ class Workspace extends Model
         return $this->hasMany(Site::class);
     }
 
+    public function media(): HasMany
+    {
+        return $this->hasMany(Media::class);
+    }
+
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'workspace_user')

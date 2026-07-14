@@ -2,6 +2,7 @@ import {
   BarChart3,
   FileText,
   Globe,
+  Image,
   LayoutDashboard,
   Settings,
   type LucideIcon,
@@ -27,6 +28,7 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Content", href: "/content", icon: FileText },
       { title: "WordPress", href: "/wordpress", icon: Globe },
+      { title: "Media", href: "/media", icon: Image },
       { title: "Analytics", href: "/analytics", icon: BarChart3 },
     ],
   },

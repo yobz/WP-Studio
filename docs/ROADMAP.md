@@ -208,11 +208,36 @@ product under real usage, not just a single-request demo.
       onto, per `docs/adr/0009-background-job-platform.md`'s Future
       Evolution section. See
       `docs/adr/0009-background-job-platform.md`.
-- [ ] **12. Storage & Media** — File/media storage for site and post
-      content (local disk today, S3-compatible object storage as the
-      production target — a real decision this milestone makes and
-      documents, the same way the database choice was deferred and
-      named in `docs/adr/0004-backend-foundation.md`).
+- [x] **12. Media Platform & Storage** — A reusable Media domain, not a
+      one-off upload feature: `App\Models\Media` is polymorphically
+      attachable (`mediable_type`/`mediable_id` + `collection`) so
+      every current and future file producer (WordPress featured
+      images today; avatars, AI-generated images, attachments, reports
+      later) shares one table and one `MediaService`, rather than each
+      inventing its own storage code. Extended the Content
+      Synchronization Platform (Milestone 10) so a synced post's
+      WordPress featured image downloads asynchronously via a new
+      `DownloadMediaJob`, built to Milestone 11's exact job shape
+      (retries, backoff, per-post uniqueness). Storage goes through
+      Laravel's Filesystem abstraction exclusively, behind a dedicated
+      `MEDIA_DISK` config value independent of the app's generic
+      default — moving to S3/R2/Spaces is a config change, not a code
+      change, the local-disk-today/object-storage-later decision this
+      slot's original scope asked for. Introduced this project's first
+      mandatory **Architecture Drift Review** step, ahead of
+      implementation — found the codebase genuinely greenfield for
+      this domain, and caught one real, self-inflicted defect during
+      implementation (a DB-level unique constraint that broke
+      replacing a featured image once `SoftDeletes` was involved,
+      fixed by moving that invariant into the service layer — see
+      `docs/adr/0010-media-platform.md`'s Alternatives Considered).
+      Frontend: a new Media Library (`/media`, grid/list toggle,
+      upload, preview/edit/delete), and featured-image thumbnails on
+      the existing Posts list/detail pages. 120 backend tests passing
+      (up from 103); zero `axe-core` violations, including a real
+      contrast defect found and fixed during this milestone's own
+      verification. See `docs/adr/0010-media-platform.md` and
+      `docs/MILESTONE_REPORT_M12.md`.
 - [ ] **13. GraphQL Layer** — GraphQL where it adds real value over the
       existing REST API (e.g. dashboard aggregation queries with
       variable shape) — not a wholesale replacement of `/api/v1`.

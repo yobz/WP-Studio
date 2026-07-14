@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Enums\PostStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Builder;
 
 class Post extends Model
 {
@@ -46,6 +47,11 @@ class Post extends Model
     public function publishingJobs(): HasMany
     {
         return $this->hasMany(PublishingJob::class);
+    }
+
+    public function featuredImage(): MorphOne
+    {
+        return $this->morphOne(Media::class, 'mediable')->where('collection', 'featured_image');
     }
 
     public function scopePublished(Builder $query): Builder

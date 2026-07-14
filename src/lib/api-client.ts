@@ -62,6 +62,30 @@ async function ensureCsrfCookie(): Promise<void> {
   }
 }
 
+async function parseEnvelope<T>(response: Response): Promise<T> {
+  const body = (await response.json()) as ApiEnvelope<T>;
+
+  if (!response.ok || !body.success) {
+    const errorBody = body as ApiErrorEnvelope;
+
+    if (
+      response.status === 401 &&
+      errorBody.error?.code === "UNAUTHENTICATED"
+    ) {
+      notifyUnauthorized();
+    }
+
+    throw new ApiError(
+      errorBody.error?.code ?? "UNKNOWN_ERROR",
+      errorBody.error?.message ?? "The request failed.",
+      response.status,
+      errorBody.error?.details,
+    );
+  }
+
+  return body.data;
+}
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
@@ -85,25 +109,30 @@ export async function apiFetch<T>(
     },
   });
 
-  const body = (await response.json()) as ApiEnvelope<T>;
+  return parseEnvelope<T>(response);
+}
 
-  if (!response.ok || !body.success) {
-    const errorBody = body as ApiErrorEnvelope;
+/**
+ * Like apiFetch, but for multipart file uploads — omits the JSON
+ * Content-Type so the browser sets the multipart boundary itself.
+ */
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  await ensureCsrfCookie();
 
-    if (
-      response.status === 401 &&
-      errorBody.error?.code === "UNAUTHENTICATED"
-    ) {
-      notifyUnauthorized();
-    }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+    headers: {
+      Accept: "application/json",
+      ...(readCookie("XSRF-TOKEN")
+        ? { "X-XSRF-TOKEN": readCookie("XSRF-TOKEN") as string }
+        : {}),
+    },
+  });
 
-    throw new ApiError(
-      errorBody.error?.code ?? "UNKNOWN_ERROR",
-      errorBody.error?.message ?? "The request failed.",
-      response.status,
-      errorBody.error?.details,
-    );
-  }
-
-  return body.data;
+  return parseEnvelope<T>(response);
 }

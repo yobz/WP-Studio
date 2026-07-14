@@ -672,6 +672,78 @@ own status badge and `SyncSummary` card reflect live progress instead.
 A future real-time push mechanism would only ever touch these two
 hooks — no component or backend contract would need to change.
 
+## Media Platform (Milestone 12)
+
+**A reusable Media domain, not a one-off upload feature.**
+`App\Models\Media` is polymorphically attachable
+(`mediable_type`/`mediable_id` + `collection`), workspace-scoped
+directly, hash-deduplicated (sha256, reuses an existing `storage_path`
+rather than writing identical bytes twice), and disk-abstracted
+(`Storage::disk(...)` exclusively — no raw filesystem calls anywhere
+in `MediaService`). Every current and future file producer this
+project names (WordPress featured images today; avatars, AI-generated
+images, attachments, reports later) attaches through the same table
+and service, rather than inventing its own storage code. Full
+reasoning, every alternative considered, and the security model in
+`docs/adr/0010-media-platform.md`.
+
+**Extends the Content Synchronization Platform, not a parallel
+pipeline.** `WordPressPostMapper` now reads `featured_media` from the
+raw WordPress post payload (included in the existing change-detection
+hash, so an image-only change now correctly triggers a sync update)
+and dispatches a new `DownloadMediaJob` — built to Milestone 11's
+exact job shape (retries, backoff, per-post uniqueness,
+`SerializesModels`) — through `syncFeaturedImage()`, which guards
+against re-downloading an already-attached image and handles removal
+(WordPress reports no featured image) synchronously, since a delete
+needs no job.
+
+**A real defect this milestone's own process caught, not shipped.**
+A DB-level unique constraint on the polymorphic attachment slot,
+added during implementation, broke replacing a post's featured image
+once `SoftDeletes` was involved (a soft-deleted row is still
+physically present, so the unique index still blocked the
+replacement's insert) — caught by this milestone's own test suite,
+fixed by moving that invariant into the service layer. `posts`' own
+schema carries the identical, apparently-unexercised tradeoff on its
+`(site_id, wordpress_post_id)` index — now a named, documented risk
+rather than a silently inherited one.
+
+**Storage is a config value away from S3/R2/Spaces.** `MEDIA_DISK`
+(default `public`) is deliberately independent of `FILESYSTEM_DISK` —
+the app's generic default disk changing for some other purpose can't
+accidentally make media private or vice versa. `config/filesystems.php`'s
+`s3` disk and `AWS_*` env vars have existed since Laravel's own
+Milestone 1 defaults; switching disks requires zero code changes.
+
+**Frontend: a new Media Library, and featured images where posts
+already live.** `/media` (`src/features/media/`) — grid/list toggle,
+upload, a preview dialog with alt-text editing and delete, following
+the same TanStack Query mutation/invalidation pattern every other
+feature already uses. `PostsTable`/`PostDetail` render a featured-image
+thumbnail when present, with zero change to either component's
+existing loading/error/empty states. `apiUpload()` is a new sibling to
+`apiFetch()` in `src/lib/api-client.ts`, sharing its envelope-parsing
+logic but omitting the JSON `Content-Type` header for multipart
+`FormData` uploads.
+
+**A real accessibility defect found and fixed during this milestone's
+own verification, not merely audited after the fact.** A
+destructive-variant button placed inside a dialog's semi-transparent
+muted footer background failed WCAG AA contrast — a combination this
+app had never used before (its other two destructive buttons sit on
+plain backgrounds, which pass). Fixed by relocating the button, not by
+overriding shared design-system color tokens for one instance.
+
+**This milestone introduced the project's first mandatory Architecture
+Drift Review**, run before any implementation began — confirmed the
+codebase was genuinely greenfield for this domain (no pre-existing
+`Media`/`Attachment`/`Upload` code anywhere) and surfaced one
+naming-adjacent risk (`Site.storage_used_mb`/`storage_limit_mb`
+describe the *remote WordPress site's* disk usage, unrelated to this
+milestone's own storage concern) resolved by documentation rather than
+a code change.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -793,10 +865,37 @@ hooks — no component or backend contract would need to change.
   dispatches a set of jobs needing combined completion tracking; a
   real candidate once a bulk "sync every site in a workspace" action
   exists.
+- No thumbnail or responsive-image generation (Milestone 12, by
+  design) — every rendered image serves the original upload/download
+  at full resolution. Named as Milestone 16 (Performance & Caching)'s
+  natural starting point; see `docs/adr/0010-media-platform.md`.
+- No virus scanning on uploaded/downloaded media (Milestone 12, by
+  design) — no scanning service exists in any environment this project
+  runs in today. Explicitly deferred to Milestone 19 (Cloud Deployment
+  & Security Hardening), the same category as `queue:work` process
+  supervision.
+- The Media Platform's MIME allow-list is images only — `jpg`, `jpeg`,
+  `png`, `gif`, `webp` (Milestone 12, by design; `svg` deliberately
+  excluded as a stored-XSS vector). Document/report types the brief
+  names as future producers are a one-line config extension, not built
+  ahead of a real consumer.
+- No row-level media deduplication across multiple attachments of the
+  same physical file, and no `media_mediable` many-to-many pivot
+  (Milestone 12, by design) — storage-level dedup (reusing bytes
+  already on disk) is real; sharing one `Media` row across two
+  independent attachments is not, since no current feature needs it.
+  See `docs/adr/0010-media-platform.md`'s Alternatives Considered.
+- The soft-delete/unique-constraint interaction Milestone 12 caught
+  and fixed on the `media` table also exists, unexercised, on `posts`'
+  own `(site_id, wordpress_post_id)` index (named since Milestone 10,
+  newly documented as a risk in Milestone 12) — not a functional bug
+  today, since no current workflow re-creates a soft-deleted post with
+  the same WordPress ID, but worth attention if that scenario ever
+  becomes real.
 
 ## Status
 
-Milestone 11 (Background Job & Queue Platform) complete. See
+Milestone 12 (Media Platform & Storage) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

@@ -63,6 +63,13 @@ class HttpWordPressClient implements WordPressClientContract
         );
     }
 
+    public function fetchItem(string $url, string $endpoint, string $username, string $applicationPassword): array
+    {
+        $baseUrl = rtrim($url, '/');
+
+        return $this->fetchRequired("{$baseUrl}{$endpoint}", authenticated: true, username: $username, applicationPassword: $applicationPassword);
+    }
+
     private function fetchActiveTheme(string $baseUrl, string $username, string $applicationPassword): ?string
     {
         $themes = $this->fetchOptional("{$baseUrl}/wp-json/wp/v2/themes", $username, $applicationPassword);

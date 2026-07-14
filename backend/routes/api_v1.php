@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Auth\UserController;
 use App\Http\Controllers\Api\V1\ContentSyncController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\PostController;
 use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\SiteController;
@@ -49,6 +50,13 @@ Route::middleware('auth:sanctum')->group(function () {
             ->name('sites.sync-status');
 
         Route::apiResource('posts', PostController::class);
+
+        Route::apiResource('media', MediaController::class)
+            ->except(['store'])
+            ->parameters(['media' => 'media']);
+        Route::post('media', [MediaController::class, 'store'])
+            ->middleware('throttle:media-upload')
+            ->name('media.store');
 
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
 
