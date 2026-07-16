@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\AI\Client\AnthropicMessagesClient;
+use App\Services\AI\Client\GeminiClient;
+use App\Services\AI\Contracts\AiClientContract;
 use App\Services\WordPress\Client\HttpWordPressClient;
 use App\Services\WordPress\Contracts\WordPressClientContract;
 use App\Support\CurrentWorkspaceContext;
@@ -18,6 +21,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(CurrentWorkspaceContext::class);
 
         $this->app->bind(WordPressClientContract::class, HttpWordPressClient::class);
+
+        $this->app->bind(AiClientContract::class, function (): AiClientContract {
+            return match (config('ai.provider')) {
+                'gemini' => $this->app->make(GeminiClient::class),
+                default => $this->app->make(AnthropicMessagesClient::class),
+            };
+        });
     }
 
     public function boot(): void
@@ -34,6 +44,10 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('media-upload', function (Request $request) {
             return Limit::perMinute(20)->by((string) $request->user()?->id);
+        });
+
+        RateLimiter::for('ai-generation', function (Request $request) {
+            return Limit::perMinute(10)->by((string) $request->user()?->id);
         });
     }
 }

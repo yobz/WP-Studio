@@ -4,95 +4,97 @@ Where the project stands right now. Overwritten at the end of every
 session — this is a snapshot, not a history (see `docs/DEVLOG.md` for
 that). If you're starting a new session, read this first.
 
-## 2026-07-16 — End of Milestone 13 (GraphQL Layer)
+## 2026-07-16 — End of Milestone 14 (AI-Assisted Content Generation)
 
-**Milestone state.** Milestone 13 is implemented, validated, and
-documented — see `docs/MILESTONE_REPORT_M13.md` for the full
-independent review. `docs/ROADMAP.md` marks it complete. **Not yet
-committed** — this milestone's own stop condition requires stopping
-here for approval before starting Milestone 14.
+**Milestone state.** Milestone 14 is implemented, validated, and
+documented — see `docs/MILESTONE_REPORT_M14.md` for the full
+independent review. `docs/ROADMAP.md` marks it complete. Committed and
+pushed — nothing outstanding from this milestone's own work.
 
-**Milestones 8 through 12 are already committed and pushed** (from
-earlier sessions). `git status` at the start of this milestone's work
-was clean; every file changed since is Milestone 13's own work.
+**New: real AI content generation, two providers, one contract.**
+`POST /api/v1/ai/generate` → `GET /api/v1/ai/jobs/{id}` (poll), async
+via the Milestone 11 job platform. `App\Services\AI\AiClientContract`
+has two implementations — `AnthropicMessagesClient` (official
+`anthropic-ai/sdk`, model `claude-opus-4-8`) and `GeminiClient` (raw
+HTTP against Google's Generative Language API) — selected by
+`AI_PROVIDER` (`anthropic` default, or `gemini`) in `backend/.env`.
+`AiAssistantPreview` on the Dashboard is wired to this for real now.
 
-**New: a GraphQL endpoint exists alongside REST, for the Dashboard
-only.** `POST /api/v1/graphql` (`nuwave/lighthouse`) — read-only,
-two queries (`dashboardOverview`, `analyticsPreview`), behind the
-exact same `auth:sanctum` → `ResolveCurrentWorkspace` middleware every
-REST route uses. Nothing else changed: Sites/Posts/Media/WordPress
-sync/background jobs are all still plain REST, untouched. If a future
-session is tempted to add more GraphQL types, read
-`docs/adr/0011-graphql-layer.md`'s Alternatives Considered first —
-Sites/Posts were deliberately evaluated and rejected as GraphQL types
-this milestone, not simply not-gotten-to.
+**Three gotchas worth knowing before touching this again.**
 
-**Two gotchas worth knowing before touching this again.**
+1. **`queue:work` doesn't re-read `.env` mid-run.** It boots the
+   framework once and reuses that config snapshot for every job it
+   processes. If you change `AI_PROVIDER`/`ANTHROPIC_API_KEY`/
+   `GEMINI_API_KEY` (or anything in `.env`) while a worker is already
+   running, restart the specific worker process — find it via
+   `Get-CimInstance Win32_Process -Filter "Name='php.exe'"` and match
+   the full command line (`queue:work`), never a blanket
+   `taskkill /IM php.exe`, since other unrelated `php.exe` processes
+   are very likely also running.
+2. **`GEMINI_MODEL` defaults to `gemini-2.0-flash`, not
+   `gemini-2.5-flash`.** The 2.5 flash/flash-lite models returned a
+   live `404` ("no longer available to new users") against the key
+   used during this milestone's verification, despite being listed
+   current in Google's own docs. If Gemini generation ever starts
+   failing with a 404, check model availability for the configured key
+   directly (`php artisan tinker`, probe a few model IDs, read the
+   actual response body — a `429` on a probe proves the key is valid,
+   a `404` names the real problem) before assuming the key is bad. Full
+   account in `docs/ENGINEERING_JOURNAL.md`'s 2026-07-16 entry.
+3. **No live-verified successful generation exists yet, for either
+   provider.** The Gemini account used for verification hit its
+   free-tier daily quota after confirming everything except the
+   `Completed` render path live. The next session with a working key
+   (paid-tier Gemini, or any Anthropic key) should do one real
+   end-to-end generation in a live browser and update this note —
+   see `docs/adr/0012-ai-content-generation.md`'s "Live Verification"
+   section and its Risks in `docs/MILESTONE_REPORT_M14.md`.
 
-1. **GraphQL enum output fields serialize as their schema NAME, not
-   the `@enum(value: ...)` internal value.** If a future schema
-   addition uses an enum on an output field, remember: a resolver
-   returning `"post-published"` produces `"POST_PUBLISHED"` in the
-   actual JSON response — the frontend must translate the wire name
-   back to whatever internal value existing code expects (see
-   `useDashboardOverview`'s `queryFn` in
-   `src/features/dashboard/hooks/use-dashboard-overview.ts` for the
-   pattern). This bit once already this milestone (see
-   `docs/ENGINEERING_JOURNAL.md`'s 2026-07-16 entry) — genuinely easy
-   to get backwards again.
-2. **A newly-installed Composer package not appearing in
-   `php artisan package:discover`'s output, or `vendor:publish`
-   reporting "No publishable resources," almost certainly means a
-   stale `bootstrap/cache/services.php`** — this OneDrive-synced-path
-   project has hit this exact class of cache staleness for two
-   unrelated packages now (first documented Milestone 6, recurred
-   Milestone 13). Delete `bootstrap/cache/services.php` and
-   `bootstrap/cache/packages.php`, then re-run
-   `php artisan package:discover`, before investigating anything else.
-
-**Immediate next step.** Milestone 14 (AI-Assisted Content Generation)
-is next per `docs/ROADMAP.md` — but is **explicitly not started**,
-waiting for approval per the milestone lifecycle's standing rule.
+**Immediate next step.** Milestone 15 (Frontend Testing — Vitest +
+React Testing Library) is next per `docs/ROADMAP.md` — but is
+**explicitly not started**, waiting for approval per the milestone
+lifecycle's standing rule.
 
 **Known live gotchas.**
 - Same PHP built-in server single-threading caveat noted since
   Milestone 8; expect two or three `php.exe` processes if a queue
-  worker is also running (Milestone 11) — check
-  `tasklist /FI "IMAGENAME eq php.exe" /V` before assuming something
-  is stuck.
+  worker is also running — check
+  `tasklist /FI "IMAGENAME eq php.exe" /V` (or, for full command
+  lines, `Get-CimInstance Win32_Process -Filter "Name='php.exe'"`)
+  before assuming something is stuck.
 - Verify browser-driven UI flows against a production build
-  (`npm run build && npm run start`), not `npm run dev` — this
-  session's verification hit stale/misleading behavior in `npm run
-  dev` (a blank-looking chart render that was actually just Fast
-  Refresh churn mid-screenshot) that the production build didn't
-  reproduce. When something looks visually wrong in dev mode, rule out
-  Fast Refresh timing before assuming a real bug — verify against the
-  production build to be sure.
+  (`npm run build && npm run start`), not `npm run dev` — a
+  Milestone 13 session hit stale/misleading behavior in dev mode that
+  the production build didn't reproduce.
 - Next.js client-side (App Router) navigation with Playwright needs
   `page.goto()` or a manual URL-polling helper, not a `locator.click()`
-  + `page.waitForURL()` combination — documented since Milestone 11,
-  now also a permanent `docs/ENGINEERING_JOURNAL.md` entry (2026-07-15)
-  after recurring once already. Wasn't re-hit this session, but stays
-  worth checking first.
+  + `page.waitForURL()` combination — documented since Milestone 11.
 - When stopping ad hoc dev servers/workers started during
   verification, identify each one's **specific PID** (`netstat -ano |
-  grep LISTENING` for web servers; `tasklist /FI "IMAGENAME eq
-  php.exe" /V` for anything without a listening port) and kill only
-  those PIDs. Never `taskkill //IM php.exe` or similar.
+  grep LISTENING` for web servers; `Get-CimInstance Win32_Process
+  -Filter "Name='php.exe'"` for full command-line matching on anything
+  without a listening port) and kill only those PIDs. Never
+  `taskkill /IM php.exe` or similar.
 - `axe-core` is a real transitive dependency (`eslint-plugin-jsx-a11y`
   needs it), not just ad hoc verification tooling — never delete it
-  during cleanup. This session's verification installed only
-  `playwright` temporarily and left `axe-core` untouched throughout.
+  during cleanup. `playwright` is installed with `--no-save` and
+  uninstalled again at the end of verification each time it's used.
+- Never print any part of an API key/credential (not even length or a
+  prefix) into tool output or logs — this project's sandbox rules
+  block it outright. To debug a credential issue, check boolean
+  presence (`config('...') ? 'yes' : 'no'`) or read the *external
+  service's* response body/status code instead.
 - Demo login: `test@example.com` / `password`
   (`backend/database/seeders/DatabaseSeeder.php` + `UserFactory`'s
   default).
 
 **Validation status as of this session.** Backend: `php artisan test`
-— **127/127 passing** (up from 120). `./vendor/bin/pint --dirty`:
-clean. `php artisan lighthouse:validate-schema`: valid. Frontend:
-`typecheck`, `lint`, `build` all pass. Live verification with a real
-backend (not a mock): confirmed exactly two GraphQL requests fire on
-Dashboard load (down from four separate REST requests), zero legacy
-REST dashboard/analytics/system-health requests, real rendered values
-throughout, zero console errors. `axe-core`: zero violations on the
-GraphQL-backed Dashboard. See `docs/MILESTONE_REPORT_M13.md`.
+— **142/142 passing** (up from 127). `./vendor/bin/pint --dirty`:
+clean. Frontend: `typecheck`, `lint`, `build` all pass. Live
+verification: confirmed live against the real Gemini API up through
+authentication, request construction, async job processing, retry/
+backoff on a real 429, typed error mapping, frontend polling, and a
+clean accessible error UI (zero console errors, zero `axe-core`
+violations) — blocked from a full `Completed`-state demo by the
+connected account's free-tier daily quota, not by any code defect. See
+`docs/MILESTONE_REPORT_M14.md`.

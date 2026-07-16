@@ -265,11 +265,38 @@ product under real usage, not just a single-request demo.
       until fixed. 127 backend tests passing (up from 120). See
       `docs/adr/0011-graphql-layer.md` and
       `docs/MILESTONE_REPORT_M13.md`.
-- [ ] **14. AI-Assisted Content Generation** — The first real AI
-      provider integration. Designs and adds the "AI Jobs" schema
-      `docs/adr/0005-domain-model.md` explicitly deferred rather than
-      guessed at, and connects `AI Assistant Preview`'s already-built
-      (currently disabled) `Generate` action to it.
+- [x] **14. AI-Assisted Content Generation** — The first real AI
+      provider integration, and the last named gap from
+      `docs/adr/0005-domain-model.md`'s deferred "AI Jobs" schema —
+      designed now against two real providers instead of guessed at.
+      New `App\Services\AI\` integration layer (`Contracts`/`Client`/
+      `DTO`/`Exceptions`) following the same shape
+      `App\Services\WordPress\` established: one `AiClientContract`,
+      two implementations behind it — `AnthropicMessagesClient`
+      (official `anthropic-ai/sdk`, `claude-opus-4-8`) and
+      `GeminiClient` (raw HTTP, Google's Generative Language API) —
+      selected at runtime by `AI_PROVIDER`, a genuine mid-milestone
+      scope change absorbed by the contract with zero changes to any
+      caller. New `ai_jobs` table (prompt, status, result, error,
+      model, token counts), processed asynchronously through the
+      Milestone 11 job platform (`GenerateAiContentJob`, same
+      retry/backoff shape as `SyncWordPressPostsJob`) rather than
+      blocking a request on unpredictable LLM latency —
+      `POST /ai/generate` returns `202 {status: "queued"}` immediately,
+      `GET /ai/jobs/{id}` is the poll endpoint the frontend hits every
+      2s while pending, the same pattern `useSyncStatus` established.
+      Connects `AI Assistant Preview`'s already-built (previously
+      disabled) `Generate` action to this pipeline with real Generating/
+      Completed/Failed states — no new global state, `useGenerateContent`/
+      `useAiJob` are the only new hooks. 142 backend tests passing (up
+      from 127). Live verification against the real Gemini API caught a
+      genuine external issue (a deprecated default model returning a
+      live 404) and confirmed the entire pipeline end-to-end — auth,
+      queue processing, retry/backoff, and error handling — before
+      being blocked from a full success-path demo by the account's
+      free-tier daily quota, documented honestly rather than glossed
+      over. See `docs/adr/0012-ai-content-generation.md` and
+      `docs/MILESTONE_REPORT_M14.md`.
 - [ ] **15. Frontend Testing** — Vitest + React Testing Library
       coverage for critical paths, closing the asymmetry flagged in
       every milestone review since M5: the backend has 38 Pest tests,

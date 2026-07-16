@@ -4,8 +4,9 @@
 
 WP Studio is a SaaS application for managing one or multiple WordPress
 websites from a single dashboard. It focuses on content management,
-publishing workflows, analytics, and WordPress integrations, with
-AI-assisted content generation planned for a later phase.
+publishing workflows, analytics, WordPress integrations, and
+AI-assisted content generation (Anthropic Claude / Google Gemini,
+Milestone 14).
 
 Built as a portfolio project demonstrating production-quality full stack
 engineering across a Next.js/React frontend and a Laravel/MySQL backend.
@@ -25,11 +26,12 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | Tables/charts     | TanStack Table, Recharts             |
 | External integrations | WordPress REST API (Application Passwords, `Illuminate\Http\Client`, Milestone 9) |
 | API (dashboard aggregation) | GraphQL (`nuwave/lighthouse`, read-only, Milestone 13) alongside REST — not a replacement |
-| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 127 tests, Milestones 6–13) |
+| AI generation | Anthropic Claude (`anthropic-ai/sdk`) and Google Gemini (raw HTTP), provider-selectable via `AI_PROVIDER`, async via the job platform (Milestone 14) |
+| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 142 tests, Milestones 6–14) |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions                       |
 
-Planned later: Docker, cloud deployment hardening, AI integration.
+Planned later: Docker, cloud deployment hardening.
 
 ## Architecture
 
@@ -804,6 +806,68 @@ transport change instead of just a data-source change.
 genuinely unused frontend code — the REST endpoints they called remain
 fully intact and available to any other consumer.
 
+## AI-Assisted Content Generation (Milestone 14)
+
+**The last named gap from the original domain model, closed for real.**
+`docs/adr/0005-domain-model.md` (Milestone 7) deliberately deferred an "AI
+Jobs" table, reasoning that its real shape couldn't be known without a real
+provider integration to design against. This milestone is that integration:
+`ai_jobs` (prompt, status, result, error, model, token counts) now exists,
+and `AiAssistantPreview`'s `Generate` button — disabled since Milestone 5 —
+is wired to it for real. Full reasoning, the provider abstraction, and every
+alternative considered in `docs/adr/0012-ai-content-generation.md`.
+
+**Two providers, one contract, selected by config — not a hard-coded
+choice.** `App\Services\AI\AiClientContract` has exactly one method,
+`generate()`, following `WordPressClientContract`'s "one contract method"
+precedent. `AnthropicMessagesClient` (official `anthropic-ai/sdk`, model
+`claude-opus-4-8`) and `GeminiClient` (raw HTTP against Google's REST API,
+following `HttpWordPressClient`'s own hand-rolled-client precedent) both
+implement it; `AppServiceProvider` binds whichever `AI_PROVIDER` names at
+resolution time. This was a genuine mid-milestone scope change — Gemini
+support was added after the Claude integration was already built and
+tested, and the contract absorbed it as a pure addition with zero changes
+to the job, controller, or frontend.
+
+**Async, through the existing job platform — not a new one.**
+`POST /api/v1/ai/generate` creates an `AiJob` row and dispatches
+`GenerateAiContentJob` (`tries: 3`, `backoff: [10, 30, 60]` — identical to
+`SyncWordPressPostsJob`'s shape, Milestone 11), returning `202
+{status: "queued", job_id}` immediately, the same pattern
+`ContentSyncController::sync()` established. `GET /api/v1/ai/jobs/{id}` is
+the poll endpoint; the frontend's `useAiJob()` hook polls every 2 seconds
+while the job is pending/processing, the same mechanism `useSyncStatus`/
+`useSite` already use.
+
+**Three typed exceptions, mapped from two different SDK/HTTP error
+shapes.** `AiProviderException` (503, retryable — rate limits, connection
+failures, 5xx), `AiResponseException` (502 — a malformed or empty
+response), `AiConfigurationException` (500 — this app's own missing/rejected
+credential, never the user's fault, message kept generic to the client).
+Both provider clients map their own error taxonomy onto this same
+three-way split, so nothing above `AiClientContract` needs to know which
+provider is configured.
+
+**A real external-API finding during live verification, not a
+hypothetical.** The Gemini default model this milestone first shipped with
+turned out to be deprecated for new API keys — caught by a real `404` from
+Google's own API in a live browser check, distinguished from a credential
+problem by probing several model IDs directly against the key (never
+printing it) and observing `429`s (which only happen after successful
+auth) on two of them. See `docs/ENGINEERING_JOURNAL.md`'s dated entry and
+`docs/adr/0012-ai-content-generation.md`'s "Live Verification" section for
+the full account, including the free-tier daily quota that ultimately
+blocked a full success-path demo.
+
+**Frontend: one widget, three new states, zero new global state.**
+`AiAssistantPreview` now has real Generating/Completed/Failed states
+(loading spinner + disabled inputs, a result panel, an inline error with
+retry) alongside the original idle state. `useGenerateContent()` (mutation)
+and `useAiJob()` (poll query) are the only new hooks — the widget holds the
+in-flight job id in local `useState`, no new Zustand store, per the standing
+"TanStack Query owns server state" rule from
+`docs/adr/0003-dashboard-data-architecture.md`.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -839,11 +903,10 @@ fully intact and available to any other consumer.
   two no-target actions; AI Assistant Preview, pending Milestone 14).
   `src/services/mock/` no longer exists. See
   `docs/MILESTONE_REPORT_M10_1.md`.
-- AI Assistant Preview has no backend — `Generate` is intentionally
-  disabled. Future integration point documented inline in
-  `src/features/dashboard/components/ai-assistant-preview.tsx`; no
-  "AI Jobs" table exists yet either (deliberately deferred — see
-  `docs/adr/0005-domain-model.md`).
+- ~~AI Assistant Preview has no backend~~ **Resolved, Milestone 14** —
+  `Generate` calls a real Claude/Gemini-backed pipeline; the "AI Jobs"
+  table `docs/adr/0005-domain-model.md` deferred now exists as `ai_jobs`.
+  See `docs/adr/0012-ai-content-generation.md`.
 - No registration, workspace switcher UI, email verification, password
   reset, 2FA, or social auth (Milestone 8) — every one deliberately
   deferred with its own reasoning, not a gap; see
@@ -965,10 +1028,28 @@ fully intact and available to any other consumer.
   with no new expensive aggregation, so it inherits no throttle the
   way `wordpress-connection`/`media-upload` have. Worth revisiting if
   the schema ever grows to include anything expensive.
+- No AI generation-history UI, no site/post-targeted generation, and no
+  streaming responses (Milestone 14, by design) — `AiAssistantPreview` is
+  a single prompt box with no memory of past generations; `ai_jobs` rows
+  persist but nothing lists them. Each is a real future feature named in
+  `docs/adr/0012-ai-content-generation.md`'s Future Evolution, not built
+  ahead of a UI that asks for it.
+- Live, successful-generation browser verification was not completed for
+  Milestone 14 — the account's Gemini free-tier daily quota was exhausted
+  during verification, after the request format, model accessibility, auth,
+  queue processing, retry/backoff, and error-handling paths were all
+  confirmed live against the real API. The completed-state UI is covered by
+  an automated integration test instead. See
+  `docs/adr/0012-ai-content-generation.md`'s "Live Verification" section.
+- `GEMINI_MODEL` defaults to `gemini-2.0-flash`, not the newer
+  `gemini-2.5-flash` (Milestone 14, by design) — `2.5-flash`/`2.5-flash-lite`
+  returned a live `404` ("no longer available to new users") against the key
+  used during this milestone's verification. Worth re-checking model
+  availability if this default is ever revisited.
 
 ## Status
 
-Milestone 13 (GraphQL Layer) complete. See
+Milestone 14 (AI-Assisted Content Generation) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

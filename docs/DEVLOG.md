@@ -1,5 +1,62 @@
 # Devlog
 
+## 2026-07-16 — Milestone 14: AI-Assisted Content Generation
+
+The first real AI provider integration, and the last named gap from
+`docs/adr/0005-domain-model.md`'s deferred "AI Jobs" schema. Full
+reasoning in `docs/adr/0012-ai-content-generation.md`; this entry is
+the what.
+
+**Two providers, one contract.** `App\Services\AI\AiClientContract`
+has one method, `generate()`. `AnthropicMessagesClient` (official
+`anthropic-ai/sdk`, `claude-opus-4-8`) and `GeminiClient` (raw HTTP
+against Google's Generative Language API, following
+`HttpWordPressClient`'s hand-rolled-client precedent rather than an
+unverified community package) both implement it; `AppServiceProvider`
+binds whichever `AI_PROVIDER` config names. Gemini support was added
+mid-milestone, after the Claude integration was already built and
+tested — the contract absorbed it as a pure addition, with zero
+changes to `AiJobService`, the job, the controller, or the frontend.
+
+**Async through the existing job platform, not a new one.**
+`POST /api/v1/ai/generate` creates an `AiJob` row and dispatches
+`GenerateAiContentJob` — same `tries: 3`/`backoff: [10, 30, 60]` shape
+as `SyncWordPressPostsJob` (Milestone 11) — returning
+`202 {status: "queued", job_id}` immediately.
+`GET /api/v1/ai/jobs/{id}` is the poll endpoint; the frontend's
+`useAiJob()` polls every 2s while pending/processing, the same
+mechanism `useSyncStatus`/`useSite` already use. Non-retryable
+failures (malformed response, bad credentials) resolve immediately via
+`$this->fail()`; retryable ones (rate limits, connection failures,
+5xx) bubble out of `handle()` so the queue worker's own retry/backoff
+handles them — verified directly, not just reasoned about.
+
+**`AiAssistantPreview` is real now.** The prompt textarea and
+suggested-prompt chips shipped in Milestone 5; `Generate` was disabled
+until today. Now: Generating (spinner, disabled inputs) → Completed
+(result panel) or Failed (inline error, retry) — three new states, one
+existing widget, zero new global state (`useGenerateContent`/
+`useAiJob` hold everything TanStack Query already owns).
+
+**A real external-API finding during live verification.** The Gemini
+model this milestone first shipped with (`gemini-2.5-flash`) returned
+a live `404` from Google — deprecated for new API keys, despite being
+listed current in Google's own docs fetched the same session.
+Distinguished from a credential problem by probing model IDs directly
+against the key (never printing it) and observing `429`s — which only
+happen after successful auth — on `gemini-2.0-flash`/`gemini-2.5-pro`.
+Switched the default to `gemini-2.0-flash`. A full success-path live
+demo was ultimately blocked by the account's free-tier daily quota,
+not by this milestone's code — the entire pipeline (auth, queue
+processing, real outbound HTTPS call, retry/backoff, typed exception
+mapping, frontend polling, error UI) was verified live against the
+real API up to that point; zero console errors, zero axe-core
+violations. The completed-state UI remains covered by
+`AiGenerationTest`'s fake-provider integration test. Full account in
+`docs/ENGINEERING_JOURNAL.md`'s dated entry.
+
+142 backend tests passing (up from 127).
+
 ## 2026-07-16 — Milestone 13: GraphQL Layer
 
 A single read-only `/api/v1/graphql` endpoint, backing exactly the

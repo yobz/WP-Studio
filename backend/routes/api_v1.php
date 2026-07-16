@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\V1\AiController;
+use App\Http\Controllers\Api\V1\AiJobController;
 use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auth\UserController;
@@ -66,7 +66,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('system-health', [SystemHealthController::class, 'index'])
             ->name('system-health.index');
 
-        Route::get('ai', [AiController::class, 'index'])->name('ai.index');
+        Route::post('ai/generate', [AiJobController::class, 'store'])
+            ->middleware('throttle:ai-generation')
+            ->name('ai.generate');
+        Route::get('ai/jobs/{aiJob}', [AiJobController::class, 'show'])
+            ->name('ai.jobs.show');
 
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
 

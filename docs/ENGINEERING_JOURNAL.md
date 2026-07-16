@@ -268,18 +268,32 @@ items are added, resolved, or reprioritized; not a chronological log
 
 ### Deferred Priority
 
-- **AI Assistant Preview has no real backend** (by design, Milestone
-  5). Integration point documented inline in
-  `src/features/dashboard/components/ai-assistant-preview.tsx` and in
-  [[0003-dashboard-data-architecture]](adr/0003-dashboard-data-architecture.md);
-  deferred to the milestone that adds AI integration, not tracked as a
-  bug.
-- **No "AI Jobs" table or model exists** (by design, Milestone 7 —
-  see [[0005-domain-model]](adr/0005-domain-model.md)'s Domain Model
-  section). Deliberately not guessed at without a real AI provider
-  integration to design the schema against — unlike `PublishingJob`,
-  which got built this milestone because its shape is generic and
-  well-understood.
+- ~~**AI Assistant Preview has no real backend**~~ **Resolved,
+  Milestone 14.** `Generate` now calls a real Claude/Gemini-backed
+  pipeline. See
+  [[0012-ai-content-generation]](adr/0012-ai-content-generation.md).
+- ~~**No "AI Jobs" table or model exists**~~ **Resolved, Milestone
+  14.** `ai_jobs` exists, designed against two real provider
+  integrations rather than guessed at. See
+  [[0012-ai-content-generation]](adr/0012-ai-content-generation.md).
+- **No AI generation-history UI, no site/post-targeted generation, no
+  streaming responses** (found Milestone 14, by design). `ai_jobs`
+  rows persist but nothing lists past generations; the widget has no
+  site selector; both provider SDKs support streaming but
+  `AiClientContract::generate()` is request/response only. Each is a
+  real future feature named in
+  [[0012-ai-content-generation]](adr/0012-ai-content-generation.md)'s
+  Future Evolution, not built ahead of a UI that asks for it.
+- **Live, successful-generation browser verification wasn't completed
+  for Milestone 14** (found Milestone 14). The account's Gemini
+  free-tier daily quota was exhausted during verification, after
+  request format, model accessibility, auth, queue processing, retry/
+  backoff, and error handling were all confirmed live against the real
+  API. The completed-state UI is covered by an automated integration
+  test (`AiGenerationTest`) instead of a live demo. Revisit with a
+  paid-tier Gemini key or a real Anthropic key. See
+  [[0012-ai-content-generation]](adr/0012-ai-content-generation.md)'s
+  "Live Verification" section.
 - ~~**Every backend API route is unauthenticated**~~ **Resolved,
   Milestone 8.** Sanctum cookie/session auth, every route behind
   `auth:sanctum` except `/health` and `/login`, `SitePolicy`/
@@ -311,11 +325,10 @@ items are added, resolved, or reprioritized; not a chronological log
   sessions, referrers). Still tracked as the future Analytics
   milestone's job; `AnalyticsSnapshot` was designed as a plausible
   aggregation target for that milestone, not a replacement for it.
-- **Analytics, AI, and Settings API domains are still placeholder
-  endpoints** (Sites and Posts became real CRUD in Milestone 7 — see
-  [[0005-domain-model]](adr/0005-domain-model.md)). Each becomes real
-  in its own future milestone (Analytics, AI, Settings respectively) —
-  see `docs/ROADMAP.md`.
+- ~~**Analytics, AI, and Settings API domains are still placeholder
+  endpoints**~~ **Partially resolved, Milestone 14** — AI is real now
+  (see above). Analytics is real (Milestone 10.1); Settings is real
+  but read-only (Milestone 10.1) — see `docs/ROADMAP.md`.
 
 ---
 
@@ -903,6 +916,67 @@ against the types you told it were true, and a genuinely wrong
 assumption about an external system's wire format sails straight
 through it undetected until something actually calls the API.
 
+### Milestone 14 (AI-Assisted Content Generation)
+
+**1. Designing a provider abstraction, then watching it actually earn
+its cost mid-milestone, not hypothetically.** *Problem:* the original
+scope was a single AI provider; partway through implementation, the
+requirement changed to "support a second provider, selectable, without
+losing the first." *Chosen solution:* the integration was already
+shaped around a one-method `AiClientContract` (deliberately mirroring
+this project's own `WordPressClientContract` precedent — "one contract
+method" — from Milestone 9), so adding the second provider meant one
+new class implementing the existing interface and one `match` arm in
+a container-binding closure. Zero changes to the job, the controller,
+the request/response layer, or the frontend. *Why this matters for an
+interview answer:* the textbook argument for the Strategy pattern is
+usually illustrated with a hypothetical; this is the rarer case of
+watching the actual mid-project requirement change land on an
+abstraction built for exactly that shape of change, and confirming it
+by counting the diff — one new file, one new binding branch, nothing
+else touched.
+
+**2. Distinguishing "the credential is wrong" from "the request is
+wrong" from "the account is out of quota" — three different failure
+modes that looked identical from the outside.** *Problem:* a live
+integration test against a real external API returned a `404`, which
+is normally a routing/resource-not-found signal, not a credentials
+signal. *Investigation:* rather than assume the API key was the
+problem (a reasonable first guess, especially given its unusual
+format), fetched the provider's own current API documentation in the
+same session and confirmed the request shape matched exactly, then
+ran a minimal, isolated request directly against the live API and read
+the *provider's own error message* — which named the specific cause
+(a deprecated model, not a credential issue) — then probed several
+alternative model identifiers against the same key and used a `429`
+response (which only happens after successful authentication) as
+positive proof the credential was valid all along. *Chosen solution:*
+switched the default model and documented both findings, rather than
+declaring the integration "possibly broken" and moving on. *Why this
+matters for an interview answer:* three different failure classes —
+bad credential, bad request, exhausted quota — can all present as an
+opaque HTTP error from the outside; the discipline of isolating each
+one with a targeted, minimal reproduction (and reading what the
+external system actually says, not just its status code) is what
+turns "the API doesn't work" into a precise, defensible root cause.
+
+**3. Choosing what "verified" means when the last mile is outside your
+control.** *Problem:* full success-path verification depended on an
+external account's quota, which was exhausted partway through testing
+— genuinely outside this session's control to fix. *Chosen solution:*
+rather than either declaring the milestone blocked or quietly skipping
+verification, precisely scoped what *had* been proven live (request
+format, model accessibility, authentication, async job processing,
+retry/backoff behavior, typed error mapping, and the frontend's error-
+handling UI, all against the real external API) versus what remained
+covered only by an automated integration test (the successful-
+completion render path), and documented the boundary explicitly rather
+than blurring it. *Why this matters for an interview answer:* "fully
+verified" and "verified everything within this session's actual
+control, with the remaining gap named precisely" are different claims,
+and conflating them is how a real, if narrow, coverage gap quietly
+becomes an unstated assumption in a later session.
+
 ---
 
 ## Resume Highlights
@@ -1190,6 +1264,120 @@ to real, shipped, verified work.
   passing tests with zero regressions, including dedicated coverage
   for cross-tenant data isolation and schema-level input validation on
   the new API surface.
+
+### Milestone 14 (AI-Assisted Content Generation)
+
+- Designed and implemented a provider-agnostic AI integration layer
+  (Laravel) supporting two interchangeable large-language-model
+  providers (Anthropic Claude via its official SDK, Google Gemini via
+  a hand-rolled REST client) behind a single one-method contract,
+  selected at runtime by configuration — absorbing a real mid-project
+  requirement change (adding the second provider) as a pure addition
+  with zero changes to any calling code.
+- Added the schema this project's own architecture record had
+  explicitly deferred a domain model milestone earlier, designing it
+  against two real provider integrations instead of guessing at a
+  shape ahead of time — closing a named, tracked technical-debt item
+  rather than letting it age indefinitely.
+- Extended an existing asynchronous job-queue platform to a new
+  workload (external AI generation) rather than building a second
+  queueing mechanism, including a deliberate split between
+  immediately-failing and automatically-retried failure modes based on
+  whether a retry could plausibly change the outcome.
+- Mapped two structurally different external error taxonomies (a typed
+  SDK exception hierarchy; raw HTTP status codes and a JSON error
+  envelope) onto one consistent internal exception hierarchy, so
+  application code and API consumers never need provider-specific
+  error handling.
+- Diagnosed a live third-party API failure through direct
+  experimentation against the real service rather than assumption —
+  distinguished a deprecated-model error from a credential problem by
+  probing multiple model identifiers and interpreting a rate-limit
+  response as proof of successful authentication — without ever
+  exposing the credential itself in any log, tool output, or
+  documentation artifact.
+- Defined and documented a precise boundary between live-verified and
+  test-only-verified functionality when external factors (a
+  third-party account's usage quota) prevented completing live
+  verification, rather than overstating or silently omitting the gap.
+  Grew the backend automated test suite to 142 passing tests with zero
+  regressions, including dedicated coverage for the retryable/
+  non-retryable failure split and the provider-selection mechanism
+  itself.
+
+---
+
+## 2026-07-16 — A live `404` that meant "deprecated model," not "invalid credential"
+
+**Problem.** Live browser verification of the new Gemini provider
+integration failed immediately: every generation attempt came back
+`AI_CONFIGURATION_ERROR` from the app's own error mapping. The queue
+worker's log showed the exception originating in
+`AnthropicMessagesClient`, not `GeminiClient` — meaning the provider
+switch itself wasn't taking effect the way it should have.
+
+**Investigation, part one — the provider switch.** `config('ai.provider')`
+resolved to `'gemini'` correctly when checked via a fresh `php artisan
+tinker` process, but the *already-running* `queue:work` process was
+still resolving to the Anthropic client. Laravel's queue worker boots
+the framework once and reuses that booted application instance across
+jobs — it doesn't re-read `.env` per job. The worker had been started
+before the relevant `.env` values were in place, so it was running
+against a stale in-memory config snapshot. Restarting the specific
+worker process (identified by its full command line via
+`Get-CimInstance Win32_Process`, not a blanket `taskkill /IM php.exe`)
+picked up the current environment.
+
+**Investigation, part two — the actual provider error.** With the
+provider switch confirmed correct, the next attempt failed with a real
+`404` from Google's API. A `404` on a REST endpoint usually means "bad
+URL," which would point at a bug in this milestone's own request
+construction — but the request shape had already been checked against
+Google's live API reference documentation (fetched the same session)
+and matched exactly: `POST /v1beta/models/{model}:generateContent`,
+`x-goog-api-key` header. Rather than assume the credential was
+malformed (a real possibility, given its unusual `AQ.`-prefixed
+format), the response body was read directly — Google's own error
+message named the actual cause: *"This model models/gemini-2.5-flash
+is no longer available to new users."* A model-availability error, not
+a routing or auth error, surfaced as a 404 specifically because
+Google's API returns 404 rather than 403 for some access-denied cases
+on named resources, to avoid confirming a resource's existence to a
+caller who can't access it.
+
+**Confirming the credential itself was fine.** Probed four candidate
+model IDs directly against the same key, via `php artisan tinker`,
+printing only the resulting HTTP status codes — never the key itself.
+`gemini-2.0-flash` and `gemini-2.5-pro` both returned `429` (quota/rate
+limited), which only happens *after* authentication succeeds; a bad
+key would have produced `401`/`403` on every model, not a 404 on some
+and a 429 on others. This distinguished, conclusively, "the key is
+wrong" from "this specific model isn't available to this key" without
+ever needing to inspect or share the credential's actual value.
+
+**Decision.** Switched the default Gemini model to `gemini-2.0-flash`.
+Attempting a full live success-path demonstration afterward hit a
+third, distinct failure: `429`, `"quota exceeded for metric:
+generate_content_free_tier_input_token_count"` — a daily free-tier
+quota, confirmed by the specific metric name in Google's response, not
+a short-lived rate limit that would clear within the session. This was
+accepted as the natural stopping point for live verification rather
+than continuing to consume a limited, non-resetting resource — the
+error path this produced (retry with backoff, then a clean failed
+state) was itself the thing verified live instead.
+
+**Lessons learned.** Three genuinely different failure classes —
+stale in-process config, a real external API's deprecated-resource
+error, and an exhausted usage quota — surfaced through similar-looking
+symptoms (a generic-looking error at first, then a 404, then a 429).
+Each needed a different, targeted investigation rather than a single
+guess-and-retry loop: checking fresh process state directly, reading
+the external system's own error message instead of inferring one from
+a status code alone, and using a *second* real request's response
+(the 429s) as positive evidence about the credential rather than
+treating the first failure as conclusive. Documented here so a future
+session touching this integration doesn't have to re-derive any of the
+three.
 
 ---
 
