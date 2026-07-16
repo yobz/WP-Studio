@@ -297,37 +297,42 @@ product under real usage, not just a single-request demo.
       free-tier daily quota, documented honestly rather than glossed
       over. See `docs/adr/0012-ai-content-generation.md` and
       `docs/MILESTONE_REPORT_M14.md`.
-- [ ] **15. Frontend Testing** — Vitest + React Testing Library
-      coverage for critical paths, closing the asymmetry flagged in
-      every milestone review since M5: the backend has 38 Pest tests,
-      the frontend has zero automated tests.
+
+## Release v0.9 — Engineering Quality
+
+- [ ] **15. Docker Development Environment** — Containerize the
+      frontend and backend with Docker Compose, including the queue
+      worker and scheduler. A fresh clone should become runnable with
+      `docker compose up`, with no undocumented local setup. Continue
+      using SQLite as the default development database.
+- [ ] **16. Frontend Testing & CI/CD** — Add Vitest + React Testing
+      Library coverage for critical frontend flows, closing the
+      testing asymmetry between backend and frontend. Introduce GitHub
+      Actions to run lint, typecheck, frontend/backend tests, and
+      production builds on every pull request.
 
 ## Release v0.95 — Production Hardening
 
-- [ ] **16. Performance & Caching** — Query/response caching once a
-      workspace can realistically have hundreds of sites/posts
-      (explicitly premature before now — `docs/adr/0005-domain-model.md`'s
-      Performance section); frontend bundle/loading performance pass.
-- [ ] **17. Observability** — Wire the Sentry/OpenTelemetry integration
-      points that have been documented placeholders since Milestone 6
-      (`.env.example`, `ApiExceptionHandler`'s single `render()` choke
-      point) into real error tracking and tracing; structured
-      application logging beyond today's request-ID correlation.
-- [ ] **18. CI/CD & Containerization** — GitHub Actions pipelines for
-      lint/typecheck/test/build on every PR, and Docker images for both
-      services so "deployable state" (the standing rule at the top of
-      this file) becomes a built artifact, not just a claim.
-- [ ] **19. Cloud Deployment & Security Hardening** — Real environments
-      (Vercel + Railway per `docs/PROJECT.md`'s Stack table, or
-      whatever this milestone's own review decides), the deferred
-      production database choice (SQLite → MySQL/Postgres, flagged
-      since Milestone 6), rate limiting, and a security review of
-      everything shipped so far.
+- [ ] **17. Performance & Scalability** — Introduce Redis-backed
+      caching where justified, optimize expensive queries, improve
+      frontend bundle loading, and validate performance under
+      realistic datasets. Continue following ADR 0005 by avoiding
+      premature optimization.
+- [ ] **18. Observability** — Implement structured logging, health
+      checks, Sentry/OpenTelemetry integration, request tracing, and
+      operational metrics using the integration points established in
+      earlier milestones.
+- [ ] **19. Cloud Deployment & Security Hardening** — Deploy to Vercel
+      and Railway (or alternatives selected during the milestone
+      review), migrate from SQLite to MySQL/PostgreSQL if appropriate
+      for production, configure object storage (S3/R2) for media,
+      review environment configuration, rate limiting, secrets
+      management, and perform a security audit of the application.
 
 ## Release v1.0 — Production Release
 
-- [ ] **20. Production Release** — Final hardening, launch checklist,
-      and disaster-recovery plan. Every "what changed / what's deferred
-      / future considerations" note from Milestones 8–19 gets a final
-      pass here — nothing should still be silently deferred by the time
-      this milestone closes.
+- [ ] **20. Production Release** — Final architecture review,
+      production readiness audit, deployment checklist, disaster
+      recovery review, documentation cleanup, dependency audit, and
+      final polish. Resolve or explicitly document every deferred
+      decision from Milestones 1–19 before closing the project.
