@@ -175,7 +175,7 @@ real data, and a real connection to a real WordPress site.
       on the two pages carrying new real-data content. See
       `docs/MILESTONE_REPORT_M10_1.md`.
 
-## Release v0.9 — Async, Extensibility & Quality
+## Release v0.85 — Async, Extensibility & Quality
 
 Everything that makes the platform behave like a real multi-tenant
 product under real usage, not just a single-request demo.
