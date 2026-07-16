@@ -15,7 +15,15 @@ drift from it milestone to milestone.
    Future Backlog before writing anything. Explain the approach and
    trade-offs before implementing, per the project's standing
    production-mindset guidance — this is where a scope question gets
-   asked, not discovered mid-implementation.
+   asked, not discovered mid-implementation. Includes an **Architecture
+   Drift Review** (standing since Milestone 12): before implementing,
+   check for duplicate services/abstractions, overlapping
+   responsibilities, ADR violations, and whether prior architectural
+   decisions still hold given what this milestone is about to add.
+   Either resolve any drift found or explicitly defer it with
+   reasoning — never let it pass silently. Document the result (even
+   "none found") in the milestone's ADR/report, the same way Milestone
+   12 did on this step's first run.
 2. **Implementation** — feature-first, matching `docs/CODING_STANDARDS.md`.
 3. **Validation** — `typecheck`, `lint`, `build` (frontend);
    `php artisan test` (backend) if backend code changed. A UI change

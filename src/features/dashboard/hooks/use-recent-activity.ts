@@ -1,11 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-
-import { mapActivityItem } from "@/features/dashboard/utils/map-activity";
-import { getRecentActivity } from "@/services/api/dashboard.service";
+import { useDashboardOverview } from "@/features/dashboard/hooks/use-dashboard-overview";
 
 export function useRecentActivity() {
-  return useQuery({
-    queryKey: ["dashboard", "activity"],
-    queryFn: async () => (await getRecentActivity()).map(mapActivityItem),
-  });
+  return useDashboardOverview((overview) => overview.recentActivity);
 }

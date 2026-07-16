@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\V1\SiteController;
 use App\Http\Controllers\Api\V1\SystemHealthController;
 use App\Http\Middleware\ResolveCurrentWorkspace;
 use Illuminate\Support\Facades\Route;
+use Nuwave\Lighthouse\Http\GraphQLController;
+use Nuwave\Lighthouse\Http\Middleware\AcceptJson;
+use Nuwave\Lighthouse\Http\Middleware\AttemptAuthentication;
 
 Route::get('health', HealthController::class)->name('health');
 
@@ -66,5 +69,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('ai', [AiController::class, 'index'])->name('ai.index');
 
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
+
+        Route::post('graphql', GraphQLController::class)
+            ->middleware([AcceptJson::class, AttemptAuthentication::class])
+            ->name('graphql');
     });
 });

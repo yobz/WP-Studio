@@ -1,31 +1,31 @@
-import type { DashboardSummary } from "@/services/api/dashboard.service";
+import type { GraphQLDashboardSummary } from "@/features/dashboard/hooks/use-dashboard-overview";
 import type { Kpi } from "@/features/dashboard/types/dashboard.types";
 
-export function mapSummaryToKpis(summary: DashboardSummary): Kpi[] {
-  const storageUsedGb = (summary.storage_used_mb / 1024).toFixed(1);
-  const storageLimitGb = Math.round(summary.storage_limit_mb / 1024);
+export function mapSummaryToKpis(summary: GraphQLDashboardSummary): Kpi[] {
+  const storageUsedGb = (summary.storageUsedMb / 1024).toFixed(1);
+  const storageLimitGb = Math.round(summary.storageLimitMb / 1024);
 
   return [
     {
       id: "connected-sites",
       label: "Connected Sites",
-      value: String(summary.connected_sites),
+      value: String(summary.connectedSites),
     },
     {
       id: "published-posts",
       label: "Published Posts",
-      value: summary.published_posts.toLocaleString(),
+      value: summary.publishedPosts.toLocaleString(),
     },
     {
       id: "draft-posts",
       label: "Draft Posts",
-      value: String(summary.draft_posts),
+      value: String(summary.draftPosts),
     },
     {
       id: "monthly-visitors",
       label: "Monthly Visitors",
-      value: summary.monthly_visitors.toLocaleString(),
-      trend: formatVisitorsTrend(summary.monthly_visitors_trend),
+      value: summary.monthlyVisitors.toLocaleString(),
+      trend: formatVisitorsTrend(summary.monthlyVisitorsTrend),
     },
     {
       id: "storage-usage",

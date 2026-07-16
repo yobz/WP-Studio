@@ -1,5 +1,91 @@
 # Devlog
 
+## 2026-07-16 — Milestone 13: GraphQL Layer
+
+A single read-only `/api/v1/graphql` endpoint, backing exactly the
+case the roadmap named for this milestone — dashboard aggregation
+with variable shape — not a wholesale REST replacement. Full reasoning
+in `docs/adr/0011-graphql-layer.md`; this entry is the what.
+
+**The Dashboard fires two requests on load instead of four.**
+`dashboardOverview` composes summary, recent activity, and system
+health — the three widgets that were always fetched together, on one
+page, every time — into one GraphQL request. `analyticsPreview(range:)`
+stays a second, independent query, since its range argument varies on
+its own (switching the chart's time range shouldn't refetch the other
+three widgets). Verified directly in a real browser via network
+interception: exactly two `POST /api/v1/graphql` requests on Dashboard
+load, zero legacy REST dashboard/analytics/system-health requests,
+exactly one additional request when the range control changes.
+
+**Resolvers delegate, they don't duplicate.** `DashboardOverview`/
+`AnalyticsPreview` (`app/GraphQL/Queries/`) call the exact same
+`DashboardService`/`AnalyticsService`/`SystemHealthService` methods
+the REST controllers already call. Zero new aggregation logic exists
+anywhere in this milestone — GraphQL is a new way to call proven code,
+not a second implementation of it.
+
+**The GraphQL route sits inside the existing middleware stack, not
+beside it.** Lighthouse registers its own top-level `/graphql` route
+by default; disabled that (`'route' => false`) and registered
+`POST /api/v1/graphql` manually inside `routes/api_v1.php`'s existing
+`auth:sanctum` → `ResolveCurrentWorkspace` group instead — the same
+tenant isolation and session auth every REST route already has,
+verified directly by a test creating data in a second workspace and
+confirming `dashboardOverview` never reflects it.
+
+**This project's second mandatory Architecture Drift Review did real
+work.** Lighthouse makes exposing `Site`/`Post` as full GraphQL types
+low-effort — reviewed and explicitly rejected, since both already have
+complete, tested, policy-enforced REST CRUD and a second read/write
+path would duplicate proven capability, not add value. Scope held
+exactly where the review put it: one schema, two queries, zero
+mutations, zero changes to any existing REST route.
+
+**A stale framework cache silently broke package registration —
+recognized immediately from a documented pattern, not re-debugged from
+scratch.** After `composer require nuwave/lighthouse`, the package
+didn't appear in `php artisan package:discover`'s output at all, and
+`vendor:publish` found nothing to publish. Root cause: a stale
+`bootstrap/cache/services.php` — the same OneDrive-synced-path
+cache-staleness issue first documented in Milestone 6's Engineering
+Journal, recurring for a new package. Recognized in under a minute
+specifically because it was already a named, documented failure
+pattern; fixed by deleting the cache file and letting Laravel
+regenerate it.
+
+**A genuine GraphQL semantics gap broke a live component — caught by
+browser verification, not by typecheck/lint/build, all of which passed
+cleanly on the broken code.** GraphQL enum fields serialize over the
+wire as their schema **name** (`POST_PUBLISHED`), not the
+`@enum(value: ...)` directive's internal value (`post-published`) —
+easy to assume the opposite, since the directive's whole job is
+mapping between the two. `RecentActivity`'s icon lookup, keyed on the
+internal value since Milestone 5, received the wire name instead and
+rendered `undefined` as a component — a React crash, live-tested via a
+real login → Dashboard flow in a real browser, not caught by any
+static check. Fixed by translating the wire name back to the internal
+value at the exact boundary where GraphQL data enters the frontend
+(`useDashboardOverview`'s `queryFn`), so every existing component
+downstream needed no changes at all.
+
+**Zero widget-component changes; five now-dead files removed.**
+`KpiCards`, `RecentActivity`, `SystemHealth`, and `AnalyticsPreview`
+required no changes — only their hooks' data source moved from REST to
+GraphQL, the same "swap the hook, not the component" discipline this
+project has followed since Milestone 6's first mock-to-real migration.
+The REST-only frontend files these hooks previously used
+(`dashboard.service.ts`, `analytics.service.ts`, `system-health.service.ts`,
+`map-activity.ts`, `map-analytics-points.ts`) were deleted as
+genuinely unused code — the backend REST endpoints they called remain
+fully intact, tested, and available to any other consumer.
+
+**Verified end-to-end against a real backend.** Backend: 127 Pest
+tests passing (up from 120), including real workspace-isolation and
+schema-level enum-validation coverage. Frontend: `typecheck`/`lint`/
+`build` all clean. `axe-core`: zero violations on the GraphQL-backed
+Dashboard.
+
 ## 2026-07-15 — Milestone 12: Media Platform & Storage
 
 Every file this application stores — WordPress featured images today,

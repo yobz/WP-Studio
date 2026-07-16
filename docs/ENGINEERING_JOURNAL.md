@@ -222,6 +222,22 @@ items are added, resolved, or reprioritized; not a chronological log
   no current workflow re-creates a soft-deleted post with the same
   WordPress ID — but a real risk if that scenario ever becomes
   reachable. See the dated entry below for the full investigation.
+- **No GraphQL mutations** (found Milestone 13, by design). Every
+  write in this application still goes through REST. A real candidate
+  only if a genuine product need for a GraphQL write path emerges; not
+  built speculatively ahead of one.
+- **GraphQL has no dedicated rate limiter** (found Milestone 13, by
+  design). Unlike `wordpress-connection`/`media-upload`, `/api/v1/graphql`
+  inherits no throttle — acceptable today since it's read-only and
+  every resolver re-uses existing, already-bounded service calls with
+  no new expensive aggregation. Worth a look if the schema ever grows
+  to include anything expensive.
+- **`posts`/`sites`/`media`'s REST endpoints are not exposed via
+  GraphQL** (found Milestone 13, by design — see
+  `docs/adr/0011-graphql-layer.md`'s Alternatives Considered). A real
+  candidate only if one of them develops a genuine variable-shape
+  aggregation need the way the Dashboard did; not built ahead of that
+  need, since all three already have complete, tested REST CRUD.
 
 ### Low Priority
 
@@ -829,6 +845,64 @@ skilled engineer moving fast would plausibly have missed — this one
 did, on its very first run, which is the actual argument for keeping
 it as a standing step rather than a one-off exercise.
 
+### Milestone 13 (GraphQL Layer)
+
+**1. Scoping a new technology by what it should *not* touch, before
+writing any code.** *Problem:* the brief for this milestone was
+deliberately terse ("GraphQL where it adds real value... not a
+wholesale replacement") rather than prescriptive — and a schema-first
+GraphQL package makes it genuinely easy to expose every model as a
+queryable type with minimal code, which is exactly how a "just GraphQL
+the whole API" scope creep happens on a real project. *Chosen
+solution:* used the Architecture Drift Review to explicitly evaluate
+and reject exposing Sites/Posts as GraphQL types, in writing, before
+implementation — not because it was hard, but because both already
+have complete, tested, policy-enforced REST CRUD, and a second path to
+the same data would duplicate proven capability instead of adding
+value. *Why this matters for an interview answer:* the interesting
+engineering decision in this milestone wasn't "how do I add GraphQL,"
+it was "what is GraphQL specifically for, here" — and answering that
+before writing a schema is what kept a two-query addition from
+becoming a parallel API surface to maintain forever after.
+
+**2. Recognizing a previously-documented failure pattern in under a
+minute, instead of re-debugging it from scratch.** *Problem:* a newly
+`composer require`'d package didn't appear in Laravel's package
+discovery output at all, and its config/schema files had nothing to
+publish — a confusing, silent failure with no error message pointing
+at a cause. *Investigation:* recognized the shape of the problem
+immediately from a previously-documented incident (Milestone 6's
+Engineering Journal entry on OneDrive-synced-path cache staleness) —
+checked `bootstrap/cache/services.php`'s timestamp, confirmed it
+predated the new package's installation, deleted it, and package
+discovery worked immediately. *Why this matters for an interview
+answer:* the actual return on writing investigation entries down isn't
+having a record for its own sake — it's cutting a second occurrence of
+the same failure from a multi-step debugging session down to a
+30-second recognition, which is exactly what happened here.
+
+**3. A framework semantics assumption that was backwards, caught by
+testing the real thing instead of trusting the type system.**
+*Problem:* `typecheck`, `lint`, and `build` all passed cleanly on code
+that crashed immediately in a real browser. *Investigation:* GraphQL
+enum fields serialize over the wire using their schema-defined NAME
+(`POST_PUBLISHED`), not the internal value a `@enum(value: ...)`
+directive maps them to (`post-published`) — the opposite of what
+seemed like the directive's obvious purpose at a glance. Static checks
+couldn't catch this because TypeScript trusted the type annotation I
+wrote, not the actual runtime value the API returned; only running the
+real login-to-Dashboard flow in a real browser surfaced the mismatch,
+as a React "invalid element type" crash inside a component that had
+worked unmodified since Milestone 5. *Chosen solution:* translated the
+wire-format enum name back to the internal value at the single
+boundary where GraphQL data enters the frontend, so no downstream
+component needed to know the wire format ever changed. *Why this
+matters for an interview answer:* "all checks passed" is not the same
+claim as "this works" — a type system verifies internal consistency
+against the types you told it were true, and a genuinely wrong
+assumption about an external system's wire format sails straight
+through it undetected until something actually calls the API.
+
 ---
 
 ## Resume Highlights
@@ -1077,6 +1151,152 @@ to real, shipped, verified work.
   isolation — and resolved it by reworking the interaction rather than
   overriding shared design-system tokens. Grew the backend automated
   test suite to 120 passing tests with zero regressions.
+
+### Milestone 13 (GraphQL Layer)
+
+- Designed and implemented a scoped GraphQL API layer (Laravel,
+  schema-first) alongside an existing REST API, deliberately limited
+  to a single real aggregation use case rather than a general-purpose
+  replacement — consolidating four separate REST round-trips into two
+  GraphQL requests for a dashboard-style UI, with resolvers delegating
+  to existing, already-tested service-layer methods rather than
+  duplicating business logic in a second transport.
+- Made and documented a deliberate scope-boundary decision under real
+  pressure to expand it — evaluated exposing two additional core
+  resources through the new GraphQL layer, using a formal architecture
+  review step, and rejected it in writing because both already had
+  complete, tested, authorization-enforced REST coverage, avoiding a
+  duplicate API surface with no corresponding product need.
+- Diagnosed a silent third-party package registration failure
+  (framework-level dependency-injection cache staleness) immediately
+  by recognizing it as a recurrence of a previously-documented
+  incident, cutting what could have been a multi-step debugging
+  session down to a direct fix.
+- Found and fixed a genuine framework semantics defect that passed
+  type-checking, linting, and a production build cleanly but crashed
+  in the real application — a serialization-format mismatch between
+  what a schema-validation directive appeared to guarantee and what
+  the wire protocol actually sent — caught specifically because the
+  verification process included exercising the real login-to-dashboard
+  flow in an actual browser, not just static analysis.
+- Preserved a zero-component-change migration discipline across a full
+  data-transport swap (REST to GraphQL) for four existing UI widgets,
+  isolating the change entirely to each widget's data-fetching hook —
+  and removed five now-unused frontend files as part of the same
+  change, rather than leaving superseded code in place.
+- Extended a shared authentication/multi-tenancy middleware stack to a
+  new API transport without building a parallel implementation of
+  either concern, and grew the backend automated test suite to 127
+  passing tests with zero regressions, including dedicated coverage
+  for cross-tenant data isolation and schema-level input validation on
+  the new API surface.
+
+---
+
+## 2026-07-16 — GraphQL enums serialize as their schema name, not their internal directive value
+
+**Problem.** `RecentActivity` — unmodified since Milestone 5 — crashed
+in a live browser check with a React "element type is invalid"
+error, immediately after migrating its data source from a REST
+endpoint to the new GraphQL `dashboardOverview` query.
+`typecheck`, `lint`, and `npm run build` had all passed cleanly
+moments earlier.
+
+**Investigation.** The schema defines `ActivityItem.type` as an enum:
+
+```graphql
+enum ActivityType {
+    POST_PUBLISHED @enum(value: "post-published")
+    DRAFT_CREATED @enum(value: "draft-created")
+    SITE_CONNECTED @enum(value: "site-connected")
+}
+```
+
+The resolver (`DashboardOverview::__invoke()`) returns
+`ActivityItemData` DTOs whose `type` property already holds the
+internal value (`"post-published"`, unchanged since Milestone 5).
+The assumption going in was that the GraphQL response would therefore
+also contain `"post-published"` — the `@enum(value: ...)` directive's
+whole apparent purpose is mapping between an internal value and a
+schema name, so it seemed reasonable that the internal value would be
+what a client actually receives. It is not: per the GraphQL
+specification, enum values serialize over the wire using their
+**schema-defined name** (`"POST_PUBLISHED"`) in every case — the
+`@enum` directive's actual job is translating between the two
+directions (accepting `POST_PUBLISHED` as an *input* argument and
+mapping it to `"post-published"` for a resolver to consume, and
+mapping a resolver's returned `"post-published"` to `POST_PUBLISHED`
+for the *output*). The frontend's `ACTIVITY_ICONS` lookup
+(`Record<ActivityType, LucideIcon>`, keyed on the lowercase-hyphenated
+internal values since Milestone 5) received `"POST_PUBLISHED"` and
+looked up a key that didn't exist, yielding `undefined` — rendered
+directly as a JSX component, which is exactly the crash React reported.
+
+**Decision.** Added an explicit wire-format translation at the single
+point GraphQL data enters the frontend (`useDashboardOverview`'s
+`queryFn`, before `select` or any component ever sees the data) —
+mapping `"POST_PUBLISHED"` → `"post-published"` etc. — rather than
+updating every downstream consumer to key on the new wire format.
+
+**Outcome.** `RecentActivity` renders correctly with zero changes to
+the component itself. Verified live: a real browser session shows
+correct icons for real seeded activity items, zero console errors.
+
+**Lessons learned.** Passing `typecheck`/`lint`/`build` verifies
+internal consistency against the types the code declares — it cannot
+catch a wrong assumption about what an external system's wire format
+actually is, because TypeScript trusts the type annotation, not the
+runtime payload. This is exactly the category of defect only a real
+integration check (an actual browser hitting the actual API) can
+catch, and is a specific, non-obvious trap for anyone using Lighthouse
+(or likely other schema-first GraphQL frameworks with a similar
+internal-value-mapping directive) enum types on an *output* field for
+the first time — the natural mental model of "the directive maps
+between the two representations" doesn't make clear which direction
+applies to which side of the wire without reading the spec/
+implementation directly.
+
+---
+
+## 2026-07-16 — A stale framework cache silently blocked a new package's service provider
+
+**Problem.** Immediately after `composer require nuwave/lighthouse`
+completed successfully, the package didn't appear anywhere in
+`php artisan package:discover`'s output, `php artisan vendor:publish
+--tag=lighthouse-config` reported "No publishable resources," and
+`php artisan vendor:publish --provider="Nuwave\Lighthouse\LighthouseServiceProvider"`
+reported the same — as if the package weren't installed at all,
+despite `composer show nuwave/lighthouse` confirming it was.
+
+**Investigation.** Checked `vendor/nuwave/lighthouse/composer.json`'s
+`extra.laravel.providers` list directly — the provider *was* correctly
+declared for auto-discovery, and `composer.json`'s own
+`extra.laravel.dont-discover` (which can opt packages out) was empty.
+Recognized the actual shape of the problem immediately from a
+previously-documented incident: `bootstrap/cache/services.php` — the
+compiled, cached list of every registered service provider — had a
+modification timestamp from two days before this package was
+installed. This is the same OneDrive-synced-path cache-staleness
+class of issue first documented in this project's Milestone 6
+Engineering Journal entry, recurring here for a completely different
+package.
+
+**Decision.** Deleted `bootstrap/cache/services.php` (and the
+adjacent stale `packages.php`) and re-ran `php artisan package:discover`.
+
+**Outcome.** Lighthouse's provider appeared immediately;
+`vendor:publish` worked on the very next attempt.
+
+**Lessons learned.** The value of writing down a root cause the first
+time it's found is fully realized the second time it happens on
+unrelated work — this was recognized and fixed in under a minute
+specifically because it matched an already-documented pattern, instead
+of costing a fresh multi-step investigation (checking composer.json,
+checking discovery output, checking dont-discover lists) all over
+again. Worth checking `bootstrap/cache/services.php`'s timestamp
+first, before anything else, the next time a freshly-installed
+Laravel package doesn't appear to be registered at all in this
+project's environment.
 
 ---
 

@@ -1,0 +1,66 @@
+"""
+Read-only. Backs dashboard aggregation only — every other resource
+(Sites, Posts, Media, ...) is served by the existing REST API at
+/api/v1/*, which this schema does not duplicate. See
+docs/adr/0011-graphql-layer.md.
+"""
+type Query {
+    "Everything the Dashboard's KPI, Recent Activity, and System Health widgets need, in one request."
+    dashboardOverview: DashboardOverview!
+
+    "Visitor/publishing history for the Dashboard's Analytics Preview chart."
+    analyticsPreview(range: AnalyticsRange! = SEVEN_D): [AnalyticsPoint!]!
+}
+
+type DashboardOverview {
+    summary: DashboardSummary!
+    recentActivity: [ActivityItem!]!
+    systemHealth: SystemHealth!
+}
+
+type DashboardSummary {
+    connectedSites: Int!
+    publishedPosts: Int!
+    draftPosts: Int!
+    storageUsedMb: Int!
+    storageLimitMb: Int!
+    monthlyVisitors: Int!
+    monthlyVisitorsTrend: Float
+}
+
+type ActivityItem {
+    id: ID!
+    type: ActivityType!
+    title: String!
+    siteName: String!
+    timestamp: String!
+}
+
+enum ActivityType {
+    POST_PUBLISHED @enum(value: "post-published")
+    DRAFT_CREATED @enum(value: "draft-created")
+    SITE_CONNECTED @enum(value: "site-connected")
+}
+
+type SystemHealth {
+    apiStatus: String!
+    wordpressConnection: String!
+    storageUsedPercent: Int!
+    queueDriver: String!
+    queuePending: Int
+    queueFailed: Int!
+    queueOldestPendingSeconds: Int
+    queueStatus: String!
+}
+
+type AnalyticsPoint {
+    date: String!
+    visitors: Int!
+    postsPublished: Int!
+}
+
+enum AnalyticsRange {
+    SEVEN_D @enum(value: "7d")
+    THIRTY_D @enum(value: "30d")
+    NINETY_D @enum(value: "90d")
+}

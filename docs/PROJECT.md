@@ -24,11 +24,12 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | Forms/validation  | React Hook Form, Zod                 |
 | Tables/charts     | TanStack Table, Recharts             |
 | External integrations | WordPress REST API (Application Passwords, `Illuminate\Http\Client`, Milestone 9) |
-| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 73 tests across Feature/Database/Validation/Policy/Authentication/Authorization/WordPress Integration, Milestones 6–9) |
+| API (dashboard aggregation) | GraphQL (`nuwave/lighthouse`, read-only, Milestone 13) alongside REST — not a replacement |
+| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 127 tests, Milestones 6–13) |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions                       |
 
-Planned later: GraphQL, Docker, cloud deployment hardening, AI integration.
+Planned later: Docker, cloud deployment hardening, AI integration.
 
 ## Architecture
 
@@ -744,6 +745,65 @@ describe the *remote WordPress site's* disk usage, unrelated to this
 milestone's own storage concern) resolved by documentation rather than
 a code change.
 
+## GraphQL Layer (Milestone 13)
+
+**Read-only, dashboard-aggregation-only — GraphQL earns its place,
+not a wholesale REST replacement.** A single `POST /api/v1/graphql`
+endpoint (`nuwave/lighthouse`) exposes exactly two queries:
+`dashboardOverview` (summary + recent activity + system health, one
+request replacing three separate REST calls) and `analyticsPreview(range:)`
+(the Dashboard's variable-range chart, kept as its own query since its
+argument varies independently). Every other resource —
+Sites, Posts, Media, WordPress sync, background jobs — keeps its
+existing, complete, policy-enforced REST API entirely unchanged. Full
+reasoning, every alternative considered, and the security model in
+`docs/adr/0011-graphql-layer.md`.
+
+**Resolvers delegate, they don't duplicate.** `app/GraphQL/Queries/DashboardOverview.php`
+and `AnalyticsPreview.php` call the exact same `DashboardService`/
+`AnalyticsService`/`SystemHealthService` methods the REST controllers
+already call — zero new aggregation logic anywhere in this milestone.
+The GraphQL route sits behind the identical `auth:sanctum` →
+`ResolveCurrentWorkspace` middleware stack every REST route already
+uses (registered manually in `routes/api_v1.php`, not through
+Lighthouse's own special-cased top-level route), so tenant isolation
+and session auth are the same guarantee, not a second implementation
+of it.
+
+**This milestone introduced the project's second mandatory
+Architecture Drift Review** (the first was Milestone 12's) — and it
+did real work here: Lighthouse makes it easy to expose Sites/Posts as
+full GraphQL types with minimal effort, and that was reviewed and
+explicitly rejected, since those resources already have complete,
+tested REST CRUD and a second read/write path would duplicate proven
+capability rather than add new value.
+
+**Two real, non-obvious defects caught during verification, not
+shipped.** A stale `bootstrap/cache/services.php` (the same
+OneDrive-path cache-staleness class of issue documented since
+Milestone 6) silently prevented Lighthouse's service provider from
+registering after `composer require` — caught by checking
+`route:list`, not assumed away. GraphQL enum fields serialize over the
+wire as their **schema name** (e.g. `POST_PUBLISHED`), not the
+`@enum(value: ...)` directive's internal PHP value — a real GraphQL
+semantics gap that broke `RecentActivity`'s icon lookup in a live
+browser check even though `typecheck`/`lint`/`build` all passed
+cleanly on the broken code. Both documented in
+`docs/ENGINEERING_JOURNAL.md`'s dated entries.
+
+**Frontend: zero widget-component changes, five now-dead files
+removed.** `useDashboardOverview()` is the one hook that calls
+`dashboardOverview`; `useKpis()`/`useRecentActivity()`/`useSystemHealth()`
+each derive their own shape from it via TanStack Query's `select`,
+sharing one network request across three widgets — the same
+"swap the hook's data source, not the component" pattern established
+since Milestone 6's first mock-to-real migration, now proven across a
+transport change instead of just a data-source change.
+`dashboard.service.ts`, `analytics.service.ts`, `system-health.service.ts`,
+`map-activity.ts`, and `map-analytics-points.ts` were deleted as
+genuinely unused frontend code — the REST endpoints they called remain
+fully intact and available to any other consumer.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -892,10 +952,23 @@ a code change.
   today, since no current workflow re-creates a soft-deleted post with
   the same WordPress ID, but worth attention if that scenario ever
   becomes real.
+- No GraphQL mutations (Milestone 13, by design) — every write in this
+  application still goes through REST. No product need for a GraphQL
+  write path has emerged; see `docs/adr/0011-graphql-layer.md`.
+- GraphQL covers Dashboard aggregation only — Sites/Posts/Media stay
+  REST-only (Milestone 13, by design, deliberately reviewed and
+  rejected as GraphQL types). A real future candidate only if a
+  genuine variable-shape aggregation need emerges for one of them the
+  way it did for the Dashboard.
+- No dedicated rate limiter on `/api/v1/graphql` (Milestone 13, by
+  design) — the endpoint is read-only and re-uses existing services
+  with no new expensive aggregation, so it inherits no throttle the
+  way `wordpress-connection`/`media-upload` have. Worth revisiting if
+  the schema ever grows to include anything expensive.
 
 ## Status
 
-Milestone 12 (Media Platform & Storage) complete. See
+Milestone 13 (GraphQL Layer) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

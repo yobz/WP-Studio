@@ -238,9 +238,33 @@ product under real usage, not just a single-request demo.
       contrast defect found and fixed during this milestone's own
       verification. See `docs/adr/0010-media-platform.md` and
       `docs/MILESTONE_REPORT_M12.md`.
-- [ ] **13. GraphQL Layer** — GraphQL where it adds real value over the
-      existing REST API (e.g. dashboard aggregation queries with
-      variable shape) — not a wholesale replacement of `/api/v1`.
+- [x] **13. GraphQL Layer** — A single read-only `/api/v1/graphql`
+      endpoint (`nuwave/lighthouse`) backing exactly the case this
+      entry named: dashboard aggregation with variable shape. Two
+      thin query resolvers (`dashboardOverview`, `analyticsPreview`)
+      delegate to the exact same `DashboardService`/`AnalyticsService`/
+      `SystemHealthService` the REST controllers already call — zero
+      duplicated logic — behind the identical `auth:sanctum` →
+      `ResolveCurrentWorkspace` middleware stack every REST route
+      already uses. Not a wholesale replacement: no mutations, and
+      Sites/Posts/Media/WordPress sync/background jobs keep their
+      existing REST endpoints entirely unchanged — reviewed and
+      explicitly rejected exposing them as GraphQL types too, since
+      they already have complete, tested, policy-enforced REST CRUD.
+      The Dashboard now fires two GraphQL requests on load instead of
+      four separate REST calls; every widget component needed zero
+      changes, only its hook's data source. Introduced this project's
+      new mandatory Architecture Drift Review step doing real work
+      here — it's what kept GraphQL's scope from creeping into a
+      parallel Sites/Posts API. Caught two real, non-obvious defects
+      during verification: a stale framework cache (the same
+      OneDrive-path staleness class documented since Milestone 6)
+      silently blocking package registration, and a genuine GraphQL
+      semantics gap (enum fields serialize as their schema name, not
+      their internal directive value) that broke a live component
+      until fixed. 127 backend tests passing (up from 120). See
+      `docs/adr/0011-graphql-layer.md` and
+      `docs/MILESTONE_REPORT_M13.md`.
 - [ ] **14. AI-Assisted Content Generation** — The first real AI
       provider integration. Designs and adds the "AI Jobs" schema
       `docs/adr/0005-domain-model.md` explicitly deferred rather than

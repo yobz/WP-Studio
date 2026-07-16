@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface ApiSuccessEnvelope<T> {
   success: true;
@@ -62,6 +63,17 @@ async function ensureCsrfCookie(): Promise<void> {
   }
 }
 
+/**
+ * Ensures a CSRF cookie exists and returns the header needed to send it
+ * back on a mutating request — shared by apiFetch, apiUpload, and the
+ * GraphQL client so the CSRF handshake stays centralized in one place.
+ */
+export async function csrfHeader(): Promise<Record<string, string>> {
+  await ensureCsrfCookie();
+  const token = readCookie("XSRF-TOKEN");
+  return token ? { "X-XSRF-TOKEN": token } : {};
+}
+
 async function parseEnvelope<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiEnvelope<T>;
 
@@ -91,10 +103,7 @@ export async function apiFetch<T>(
   init?: RequestInit,
 ): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
-
-  if (MUTATING_METHODS.has(method)) {
-    await ensureCsrfCookie();
-  }
+  const headers = MUTATING_METHODS.has(method) ? await csrfHeader() : {};
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -102,9 +111,7 @@ export async function apiFetch<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...(readCookie("XSRF-TOKEN")
-        ? { "X-XSRF-TOKEN": readCookie("XSRF-TOKEN") as string }
-        : {}),
+      ...headers,
       ...init?.headers,
     },
   });
@@ -120,7 +127,7 @@ export async function apiUpload<T>(
   path: string,
   formData: FormData,
 ): Promise<T> {
-  await ensureCsrfCookie();
+  const headers = await csrfHeader();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
@@ -128,9 +135,7 @@ export async function apiUpload<T>(
     body: formData,
     headers: {
       Accept: "application/json",
-      ...(readCookie("XSRF-TOKEN")
-        ? { "X-XSRF-TOKEN": readCookie("XSRF-TOKEN") as string }
-        : {}),
+      ...headers,
     },
   });
 
