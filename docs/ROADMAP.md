@@ -326,11 +326,20 @@ product under real usage, not just a single-request demo.
       dropped from 100–200s to 15–20s as a result. See
       `docs/adr/0013-docker-development-environment.md` and
       `docs/MILESTONE_REPORT_M15.md`.
-- [ ] **16. Frontend Testing & CI/CD** — Add Vitest + React Testing
-      Library coverage for critical frontend flows, closing the
-      testing asymmetry between backend and frontend. Introduce GitHub
-      Actions to run lint, typecheck, frontend/backend tests, and
-      production builds on every pull request.
+- [x] **16. Frontend Testing & CI/CD** — Vitest + React Testing Library,
+      deliberately bounded to critical flows (a form, the app's richest
+      stateful widget, two pure mappers, one hook — 20 tests, 5 files)
+      rather than exhaustive component coverage, closing the testing
+      asymmetry flagged since Milestone 5. One GitHub Actions workflow,
+      two parallel jobs on native runners (not the Milestone 15 Docker
+      images, which are scoped to developer experience, not CI) — lint,
+      typecheck, tests, and production build for both frontend and
+      backend on every pull request and push to `master`. A full-repo
+      Pint sweep (every prior milestone only ran `--dirty`) surfaced 7
+      pre-existing style issues, fixed before the new CI gate could fail
+      on its own first run. See
+      `docs/adr/0014-frontend-testing-and-ci.md` and
+      `docs/MILESTONE_REPORT_M16.md`.
 
 ## Release v0.95 — Production Hardening
 

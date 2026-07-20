@@ -1,5 +1,37 @@
 # Devlog
 
+## 2026-07-20 — Milestone 16: Frontend Testing & CI/CD
+
+Closes the testing asymmetry every milestone review since M5 has
+flagged: the backend had 142 Pest tests, the frontend had zero. Full
+reasoning in `docs/adr/0014-frontend-testing-and-ci.md`.
+
+**Vitest + React Testing Library, bounded to critical flows on
+purpose.** 20 tests across 5 files: `LoginForm` (validation, success,
+both error branches), `AiAssistantPreview` (idle/generating/completed/
+failed — the richest state machine in the app), two pure mapper
+functions, and one hook. Every test mocks at the actual network
+boundary (`services/api/*.service.ts`), never React Query internals.
+Deliberately not exhaustive component coverage — a presentational
+component with no branching logic doesn't get its own test.
+
+**One CI workflow, two parallel jobs, native runners.** GitHub Actions
+`frontend` (typecheck/lint/test/build) and `backend` (Pint/`artisan
+test`) run on every PR and push to `master` — chosen over running CI
+against the Milestone 15 Docker images, since that stack is explicitly
+scoped to developer experience, not CI, and native runners are faster
+and simpler to debug.
+
+**A CI gate fixed before it could fail on its own first run.** A
+full-repo `./vendor/bin/pint --test` (every prior milestone only ran
+`--dirty`) surfaced 7 pre-existing style issues in files this milestone
+never touched. Fixed first — a red check on day one teaches a team to
+ignore it.
+
+**One dependency conflict, resolved by pinning.** `@vitejs/plugin-react@6`
+declares an optional peer wanting Babel 8; `shadcn`'s own tree wants
+Babel 7. Pinned `^5.2.0` instead of forcing an unverified resolution.
+
 ## 2026-07-20 — Milestone 15: Docker Development Environment
 
 A one-command local environment — `docker compose up` — for a project

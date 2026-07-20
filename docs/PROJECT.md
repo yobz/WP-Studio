@@ -27,10 +27,10 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | External integrations | WordPress REST API (Application Passwords, `Illuminate\Http\Client`, Milestone 9) |
 | API (dashboard aggregation) | GraphQL (`nuwave/lighthouse`, read-only, Milestone 13) alongside REST — not a replacement |
 | AI generation | Anthropic Claude (`anthropic-ai/sdk`) and Google Gemini (raw HTTP), provider-selectable via `AI_PROVIDER`, async via the job platform (Milestone 14) |
-| Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 142 tests, Milestones 6–14) |
+| Testing           | Vitest + React Testing Library (frontend — 20 tests, Milestone 16); Pest (backend — 142 tests, Milestones 6–14) |
 | Local development | Docker Compose (`backend`, `queue`, `scheduler`, `caddy`, `frontend`, optional `redis`) — one-command `docker compose up`, Milestone 15; bare-metal setup still supported |
 | Deployment         | Vercel (frontend), Railway (backend) |
-| CI/CD             | GitHub Actions                       |
+| CI/CD             | GitHub Actions — lint/typecheck/test/build on every PR and push to `master`, Milestone 16 |
 
 Planned later: cloud deployment hardening.
 
@@ -912,6 +912,35 @@ per-route dev-server compile times from 100–200s to 15–20s). All four
 documented in full in `docs/adr/0013-docker-development-environment.md`'s
 Live Validation Findings and `docs/ENGINEERING_JOURNAL.md`.
 
+## Frontend Testing & CI/CD (Milestone 16)
+
+**The backend/frontend testing asymmetry flagged since Milestone 5 is
+closed.** Vitest + React Testing Library, deliberately bounded to
+critical flows rather than exhaustive component coverage: two pure
+mapper functions, one form component (`LoginForm` — validation,
+success, and both error branches), one component with the richest state
+machine in the app (`AiAssistantPreview` — idle/generating/completed/
+failed), and one hook (`useAiJob`'s `enabled`-gating). 20 tests across 5
+files, every one mocking at the actual network boundary
+(`services/api/*.service.ts`), never React Query internals. Full
+reasoning — including why Vitest over Jest, and why this scope over
+exhaustive coverage — in `docs/adr/0014-frontend-testing-and-ci.md`.
+
+**One GitHub Actions workflow, two parallel jobs, native runners.**
+`frontend` (`setup-node`, `npm ci`, typecheck/lint/test/build) and
+`backend` (`setup-php`, `composer install`, Pint, `artisan test`) run on
+every pull request and every push to `master` — deliberately *not*
+inside the Milestone 15 Docker images, since that stack's own ADR scoped
+it to developer experience, not CI, and native runners are faster and
+simpler to debug from CI logs. No version matrix — one Node version, one
+PHP version, matching what Milestone 15's containers already use.
+
+**A CI gate that would have failed on its own first run, fixed before
+it existed.** A full-repo `pint --test` (every prior milestone only ever
+ran `--dirty`) surfaced 7 pre-existing style issues in files this
+milestone never touched. Fixed first, so the new CI gate starts green
+instead of teaching the team to ignore a red check.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -1107,10 +1136,25 @@ Live Validation Findings and `docs/ENGINEERING_JOURNAL.md`.
   `QUEUE_CONNECTION` all stay on `database`; the container only starts
   under `docker compose --profile optional up`. Real integration is
   Milestone 17's job.
+- Frontend test coverage is deliberately bounded to critical flows, not
+  every component (Milestone 16, by design) — presentational components
+  with no branching logic aren't tested individually. See
+  `docs/adr/0014-frontend-testing-and-ci.md`.
+- No end-to-end (Playwright) tests run in CI (Milestone 16, by design) —
+  the brief scoped this milestone to Vitest + React Testing Library
+  specifically; every milestone's own manual live verification already
+  uses Playwright ad hoc, formalizing that into a permanent CI suite is
+  separate future scope.
+- No test coverage reporting/threshold is configured (Milestone 16, by
+  design) — not a meaningful signal at this project's current test
+  count; revisit if that changes.
+- CI runs on native GitHub Actions runners, not the Milestone 15 Docker
+  images (Milestone 16, by design) — that stack is scoped to developer
+  experience, not CI; see `docs/adr/0014-frontend-testing-and-ci.md`.
 
 ## Status
 
-Milestone 15 (Docker Development Environment) complete. See
-`ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
-of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
-architectural decisions and the reasoning behind them.
+Milestone 16 (Frontend Testing & CI/CD) complete. See `ROADMAP.md` for
+the full milestone list, `DEVLOG.md` for a running log of completed
+work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
+decisions and the reasoning behind them.

@@ -4,6 +4,7 @@ use App\Enums\WorkspaceRole;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -64,7 +65,7 @@ function fakeWordPressConnectionRejectsCredentials(): void
 function fakeWordPressConnectionUnreachable(): void
 {
     Http::fake([
-        '*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        '*' => fn () => throw new ConnectionException('Connection timed out'),
     ]);
 }
 
@@ -110,6 +111,6 @@ function fakeWordPressPostsCollection(): void
 function fakeWordPressPostsCollectionUnreachable(): void
 {
     Http::fake([
-        '*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        '*' => fn () => throw new ConnectionException('Connection timed out'),
     ]);
 }

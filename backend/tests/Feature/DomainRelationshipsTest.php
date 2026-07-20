@@ -7,6 +7,7 @@ use App\Models\PublishingJob;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Database\QueryException;
 
 it('relates a workspace to its sites', function () {
     $workspace = Workspace::factory()->create();
@@ -68,7 +69,7 @@ it('enforces one analytics snapshot per site per day', function () {
     AnalyticsSnapshot::factory()->for($site)->create(['snapshot_date' => '2026-01-01']);
 
     AnalyticsSnapshot::factory()->for($site)->create(['snapshot_date' => '2026-01-01']);
-})->throws(\Illuminate\Database\QueryException::class);
+})->throws(QueryException::class);
 
 it('scopes sites to only connected via Site::connected()', function () {
     Site::factory()->count(2)->create();

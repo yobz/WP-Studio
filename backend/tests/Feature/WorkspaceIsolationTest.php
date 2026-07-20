@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\WorkspaceRole;
+use App\Models\Post;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Workspace;
@@ -88,10 +89,10 @@ it('switches the resolved workspace via the X-Workspace-Id header for a user in 
 it('isolates the dashboard summary to the current workspace only', function () {
     [, $workspace] = actingAsWorkspaceMember();
     $mySite = Site::factory()->for($workspace)->create(['storage_used_mb' => 100, 'storage_limit_mb' => 1000]);
-    \App\Models\Post::factory()->for($mySite)->published()->create();
+    Post::factory()->for($mySite)->published()->create();
 
     $otherSite = Site::factory()->create(['storage_used_mb' => 9999, 'storage_limit_mb' => 9999]);
-    \App\Models\Post::factory()->for($otherSite)->published()->count(5)->create();
+    Post::factory()->for($otherSite)->published()->count(5)->create();
 
     $response = $this->getJson('/api/v1/dashboard/summary');
 

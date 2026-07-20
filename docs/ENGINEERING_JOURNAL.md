@@ -347,6 +347,16 @@ items are added, resolved, or reprioritized; not a chronological log
   `QUEUE_CONNECTION` all stay on `database`; the container only starts
   under `docker compose --profile optional up`. Real integration is
   Milestone 17 (Performance & Scalability)'s job.
+- **Frontend test coverage is bounded to critical flows, not every
+  component** (found Milestone 16, by design). See
+  [[0014-frontend-testing-and-ci]](adr/0014-frontend-testing-and-ci.md).
+- **No end-to-end (Playwright) tests run in CI** (found Milestone 16,
+  by design). Every milestone's own manual live verification already
+  uses Playwright ad hoc; formalizing that into a permanent CI suite is
+  separate future scope, not built here.
+- **No test coverage reporting/threshold configured** (found Milestone
+  16, by design) — not a meaningful signal at this project's current
+  test count.
 
 ---
 
@@ -1065,6 +1075,56 @@ of assumed; "add a longer timeout" fixes the symptom's visibility, not
 the defect, and this one had a measurable, fixable root cause the whole
 time.
 
+### Milestone 16 (Frontend Testing & CI/CD)
+
+**1. Choosing test scope deliberately, and writing down what was
+excluded and why.** *Problem:* "add tests" has no natural stopping
+point — a codebase this size could absorb hundreds of component tests
+of steadily diminishing value. *Chosen solution:* picked five files
+specifically because each demonstrates a distinct testing technique
+against real logic (form validation and error branching, a multi-state
+UI driven by asynchronous data, pure-function mapping, a hook's
+conditional-fetch behavior) and named, explicitly, the much larger set
+of presentational components deliberately left untested because they
+have no branching logic to verify. *Why this matters for an interview
+answer:* "what did you decide *not* to test, and why" is a more
+revealing question than "what's your coverage percentage" — a coverage
+number can't distinguish thorough judgment from mechanical
+box-checking, and being able to state the boundary and its reasoning
+demonstrates the former.
+
+**2. A dependency conflict that surfaced a real, current ecosystem
+transition — and resolving it without hiding the conflict.** *Problem:*
+installing the standard React plugin for the new test runner failed
+outright on a peer-dependency conflict between two major versions of a
+transitive build tool. *Investigation:* rather than force the install
+past the warning (`--legacy-peer-deps`/`--force`, both of which accept
+whatever the resolver produces without verifying it actually works),
+inspected what changed between the conflicting package's recent major
+versions and pinned the last release before the conflicting optional
+dependency was introduced. *Why this matters for an interview answer:*
+a peer-dependency error is the package manager correctly refusing to
+guess — overriding it blindly trades a visible, fixable problem for an
+invisible, possibly-broken one; the right response is almost always to
+understand *why* the conflict exists, not to suppress the check.
+
+**3. Refusing to ship a CI gate that would fail on its own first
+run.** *Problem:* adding an automated code-style check to continuous
+integration is only trustworthy if it starts passing — a check that's
+red from day one teaches a team to treat "CI is red" as background
+noise rather than a signal. *Investigation:* running the style checker
+across the entire codebase (rather than only files touched by recent
+work, which is what every previous check had actually run) surfaced
+several pre-existing violations nobody had caused recently and nobody
+had been asked to fix. *Chosen solution:* fixed all of them, verified
+the full test suite still passed, *then* added the check to the new CI
+configuration — deliberately sequenced so the very first automated run
+of the new gate would be green. *Why this matters for an interview
+answer:* introducing a new quality gate is itself a migration, not just
+a configuration change, and treating it that way (fix first, enforce
+second) is what makes the gate something people trust rather than
+something they route around.
+
 ---
 
 ## Resume Highlights
@@ -1426,6 +1486,68 @@ to real, shipped, verified work.
   four real, independently-verified defects before considering the work
   complete, including one that reduced a core developer-facing
   interaction's latency by roughly 90%.
+
+### Milestone 16 (Frontend Testing & CI/CD)
+
+- Established the project's first frontend automated test suite,
+  deliberately scoped to critical user flows and pure logic rather than
+  exhaustive component coverage, and documented the specific reasoning
+  and boundary for that scope decision rather than treating "more tests"
+  as an unqualified good.
+- Diagnosed and resolved a real peer-dependency version conflict between
+  a testing tool and an existing project dependency by identifying the
+  specific transitive change that introduced the conflict and pinning
+  around it, rather than suppressing the package manager's conflict
+  detection.
+- Designed and implemented a two-job continuous integration pipeline
+  covering both halves of a full-stack application (static analysis,
+  automated tests, and production build verification for each),
+  deliberately choosing native CI runners over an available
+  containerized environment after evaluating that the containerized
+  setup was scoped to a different concern.
+- Audited the full codebase against an automated code-style tool for
+  the first time (previous checks had only ever covered recently-changed
+  files) and resolved every pre-existing violation found before
+  introducing that tool as a required automated check — ensuring a new
+  quality gate started in a passing state rather than immediately
+  generating noise.
+
+---
+
+## 2026-07-20 — A webpack internal crash from a stale `.next` cache, right after a dependency install
+
+**Problem.** Immediately after installing Vitest and its supporting
+packages, `npm run build` crashed with `TypeError: Cannot read
+properties of undefined (reading 'length')` deep inside Next's bundled
+webpack (`WasmHash._updateWithBuffer`) — an internal error with no
+obvious connection to anything this milestone had actually changed (no
+application source was touched before this build was run).
+
+**Investigation.** The stack trace pointed entirely into
+`next/dist/compiled/webpack/bundle5.js`, not into any project file —
+consistent with a build-tool-internal state problem rather than a real
+compile error in application code. This project's own Engineering
+Journal already has a standing pattern for exactly this shape of
+symptom: a framework build/cache directory (`.next/`,
+`bootstrap/cache/`) becoming inconsistent with the code or dependencies
+actually present, most often right after a dependency tree changes
+underneath it.
+
+**Decision.** Deleted `.next/` and re-ran the build without any other
+change.
+
+**Outcome.** Clean build immediately, identical route output to the
+last known-good build, confirming nothing else was actually wrong.
+
+**Lessons learned.** "A stack trace pointing entirely inside a
+dependency's own bundled internals, immediately following a
+`node_modules` change" is now a fast, specific pattern match for "try
+deleting the build cache before investigating the error itself" — the
+same standing lesson this project has drawn from `bootstrap/cache/`
+staleness (Milestones 6, 13) and `.next/` reparse-point staleness
+(Milestone 6, formalized into Milestone 15's named-volume strategy),
+recurring here in a new error shape but the identical underlying cause
+class: cached build state and current dependency state disagreeing.
 
 ---
 
