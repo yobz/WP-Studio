@@ -28,10 +28,11 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | API (dashboard aggregation) | GraphQL (`nuwave/lighthouse`, read-only, Milestone 13) alongside REST — not a replacement |
 | AI generation | Anthropic Claude (`anthropic-ai/sdk`) and Google Gemini (raw HTTP), provider-selectable via `AI_PROVIDER`, async via the job platform (Milestone 14) |
 | Testing           | Vitest, React Testing Library (frontend, not yet added); Pest (backend — 142 tests, Milestones 6–14) |
+| Local development | Docker Compose (`backend`, `queue`, `scheduler`, `caddy`, `frontend`, optional `redis`) — one-command `docker compose up`, Milestone 15; bare-metal setup still supported |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions                       |
 
-Planned later: Docker, cloud deployment hardening.
+Planned later: cloud deployment hardening.
 
 ## Architecture
 
@@ -868,6 +869,49 @@ in-flight job id in local `useState`, no new Zustand store, per the standing
 "TanStack Query owns server state" rule from
 `docs/adr/0003-dashboard-data-architecture.md`.
 
+## Docker Development Environment (Milestone 15)
+
+**One-command local setup, hand-written rather than Laravel Sail.**
+`docker compose up` runs the whole stack — `backend` (PHP-FPM), `queue`
+(`queue:work`), `scheduler` (`schedule:work`, Laravel's own Docker-
+friendly cron-free scheduler runner), `caddy` (reverse proxy, FastCGI to
+`backend:9000`), and `frontend` (`next dev`) — with no local PHP,
+Composer, or Node install required. Chose a small, hand-written Compose
+setup over Sail after reading Sail's actual runtime Dockerfile and
+Supervisor config: it runs `artisan serve` (not PHP-FPM), has no reverse
+proxy, and has no queue/scheduler entry at all — conflicting with this
+milestone's own explicit requirements rather than satisfying them.
+SQLite stays the database; no server container. Full reasoning in
+`docs/adr/0013-docker-development-environment.md`.
+
+**Named volumes close the OneDrive placeholder bug class by
+construction.** `storage/`, `bootstrap/cache/`, and `.next/` — the two
+directories this project's Engineering Journal already documented
+breaking from OneDrive-synced-path reparse-point staleness (Milestone 6,
+recurring Milestone 13) plus its Next.js counterpart — are named Docker
+volumes, genuine Linux-native storage the OneDrive sync client never
+touches. `vendor/`/`node_modules/` are named volumes too (large
+dependency trees, seeded from the image at first container start, no
+platform-binary mismatch risk). `database/database.sqlite` stays
+bind-mounted, deliberately, for host inspectability.
+
+**Four real defects, found and fixed by actually running it, not by
+reviewing the config.** A missing `oniguruma-dev` build dependency broke
+`mbstring` entirely; `storage/app`/`storage/framework/*` built read-only
+from the Windows build context (NTFS has no Unix permission bits for
+Docker Desktop to preserve), surfacing as a misleading CORS error in the
+browser since the resulting 500 happened before CORS headers could
+attach; the bind-mounted SQLite database was unwritable by the PHP-FPM
+worker user for the identical Windows-bind-mount-permissions reason; and
+a Fast Refresh rebuild remounted the root layout mid-login, silently
+dropping the pending post-login redirect — traced to the frontend
+container's file watcher needlessly scanning `backend/vendor`'s ~9,800
+files (fixed by shadowing `backend/` out of the frontend container's
+bind mount and switching to polling-based watching, which also dropped
+per-route dev-server compile times from 100–200s to 15–20s). All four
+documented in full in `docs/adr/0013-docker-development-environment.md`'s
+Live Validation Findings and `docs/ENGINEERING_JOURNAL.md`.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -990,7 +1034,7 @@ in-flight job id in local `useState`, no new Zustand store, per the standing
   exists.
 - No thumbnail or responsive-image generation (Milestone 12, by
   design) — every rendered image serves the original upload/download
-  at full resolution. Named as Milestone 16 (Performance & Caching)'s
+  at full resolution. Named as Milestone 17 (Performance & Scalability)'s
   natural starting point; see `docs/adr/0010-media-platform.md`.
 - No virus scanning on uploaded/downloaded media (Milestone 12, by
   design) — no scanning service exists in any environment this project
@@ -1046,10 +1090,27 @@ in-flight job id in local `useState`, no new Zustand store, per the standing
   returned a live `404` ("no longer available to new users") against the key
   used during this milestone's verification. Worth re-checking model
   availability if this default is ever revisited.
+- No production Docker image, orchestration platform, or deployment
+  target (Milestone 15, by design) — the Dockerfiles are dev-shaped
+  (bind mounts, `next dev`, no multi-stage optimized build). Milestone
+  19's job, per `docs/adr/0013-docker-development-environment.md`.
+- No general host-UID/GID-matching mechanism in the Docker setup
+  (Milestone 15, by design) — the targeted `chmod`/`chown` fixes live
+  validation required (`storage`/`bootstrap/cache` at build time,
+  `database/` at container start) solve the two specific paths that
+  actually broke on this project's real Windows host; a broader
+  Sail-style `WWWUSER` build-arg mechanism is deferred until a
+  Linux-host contributor hits a different path with the same problem.
+  See the ADR's Deferred section.
+- Redis is present in `docker-compose.yml` but genuinely unused
+  (Milestone 15, by design) — `CACHE_STORE`/`SESSION_DRIVER`/
+  `QUEUE_CONNECTION` all stay on `database`; the container only starts
+  under `docker compose --profile optional up`. Real integration is
+  Milestone 17's job.
 
 ## Status
 
-Milestone 14 (AI-Assisted Content Generation) complete. See
+Milestone 15 (Docker Development Environment) complete. See
 `ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running log
 of completed work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
 architectural decisions and the reasoning behind them.

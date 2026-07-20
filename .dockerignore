@@ -1,0 +1,18 @@
+# Shared by both the frontend and backend (PHP-FPM) build contexts —
+# both use the repo root as context (see docker-compose.yml).
+
+.git/
+.next/
+node_modules/
+backend/vendor/
+backend/node_modules/
+backend/storage/logs/
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*
+backend/.env
+.env
+.env.local
+*.log
+.DS_Store

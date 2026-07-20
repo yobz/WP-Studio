@@ -1,0 +1,108 @@
+# One-command local development environment. See
+# docs/adr/0013-docker-development-environment.md for the full
+# architecture, volume strategy, and every trade-off.
+#
+#   docker compose up            — frontend, backend, queue, scheduler, proxy
+#   docker compose --profile optional up   — also starts redis (unused today)
+#
+# Frontend: http://localhost:3000   Backend API: http://localhost:8000
+
+x-php: &php
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+  volumes:
+    - ./backend:/var/www/html
+    - backend_vendor:/var/www/html/vendor
+    - backend_storage:/var/www/html/storage
+    - backend_bootstrap_cache:/var/www/html/bootstrap/cache
+  networks:
+    - wp-studio
+
+services:
+  backend:
+    <<: *php
+    command: ["php-fpm"]
+
+  queue:
+    <<: *php
+    command: ["php", "artisan", "queue:work", "--tries=3"]
+    depends_on:
+      - backend
+
+  scheduler:
+    <<: *php
+    # schedule:work is Laravel's own Docker-friendly scheduler runner —
+    # a long-running process that sleeps until each minute and invokes
+    # due tasks, standing in for a real cron entry (docs/adr/0009-background-job-platform.md's
+    # one registered task: daily connected-site metadata refresh).
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./backend:/var/www/html:ro
+    depends_on:
+      - backend
+    networks:
+      - wp-studio
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+      # Shadows backend/ out of this container's view entirely — Next.js
+      # has no next.config.ts (zero-config), so its file watcher scans
+      # everything under /app by default. Without this, that included
+      # backend/vendor's ~9,800 PHP classes on every poll (see
+      # WATCHPACK_POLLING above), a real, measured contributor to this
+      # milestone's slow dev-server response times. The other services
+      # each mount ./backend directly and are unaffected.
+      - /app/backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Native filesystem change events from a Windows-host bind mount
+      # don't propagate reliably across the Docker Desktop VM boundary —
+      # confirmed during this milestone's own live validation, where it
+      # caused spurious mid-session Fast Refresh rebuilds (webpack.dev
+      # falling back to a partial, erratic native watch) that remounted
+      # the root layout during an in-flight login and silently dropped
+      # the pending navigation. Polling is slightly more CPU-hungry but
+      # deterministic — see docs/adr/0013-docker-development-environment.md.
+      WATCHPACK_POLLING: "true"
+    networks:
+      - wp-studio
+
+  # Not started by `docker compose up` — see docs/adr/0013-docker-development-environment.md's
+  # "Redis — Present, Not Wired". Nothing in this app is configured to
+  # use it yet (CACHE_STORE/SESSION_DRIVER/QUEUE_CONNECTION all stay on
+  # `database`).
+  redis:
+    image: redis:7-alpine
+    profiles: ["optional"]
+    ports:
+      - "6379:6379"
+    networks:
+      - wp-studio
+
+volumes:
+  backend_vendor:
+  backend_storage:
+  backend_bootstrap_cache:
+  frontend_node_modules:
+  frontend_next:
+
+networks:
+  wp-studio:
+    driver: bridge

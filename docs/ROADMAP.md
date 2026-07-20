@@ -300,11 +300,32 @@ product under real usage, not just a single-request demo.
 
 ## Release v0.9 — Engineering Quality
 
-- [ ] **15. Docker Development Environment** — Containerize the
-      frontend and backend with Docker Compose, including the queue
-      worker and scheduler. A fresh clone should become runnable with
-      `docker compose up`, with no undocumented local setup. Continue
-      using SQLite as the default development database.
+- [x] **15. Docker Development Environment** — A hand-written Docker
+      Compose setup (`backend`, `queue`, `scheduler`, `caddy`,
+      `frontend`, plus an optional not-started-by-default `redis`),
+      chosen over Laravel Sail after reading Sail's actual published
+      artifacts and finding it uses `artisan serve` with no PHP-FPM, no
+      reverse proxy, and no queue/scheduler support out of the box —
+      conflicting with this milestone's own explicit requirements rather
+      than satisfying them by default. SQLite stays the database, no
+      server container. Caddy fronts PHP-FPM (a three-line `Caddyfile`
+      vs. Nginx's equivalent FastCGI block). Named Docker volumes for
+      `storage/`, `bootstrap/cache/`, and `.next/` remove the OneDrive
+      placeholder-reparse-point bug class documented since Milestone 6
+      by construction; `database/database.sqlite` stays bind-mounted for
+      host inspectability. Live validation (a genuine clean-machine
+      `docker compose up`, not just a config review) caught and fixed
+      four real defects before this milestone was called done: a missing
+      build dependency breaking `mbstring` entirely, storage directories
+      that built read-only from the Windows build context, a SQLite file
+      unwritable by the PHP-FPM worker user, and a Fast Refresh bug that
+      silently dropped an in-flight login redirect — the last traced to
+      the frontend container needlessly watching `backend/vendor`'s
+      ~9,800 files, fixed by shadowing `backend/` out of its bind mount
+      and switching to polling-based file watching. Route compile times
+      dropped from 100–200s to 15–20s as a result. See
+      `docs/adr/0013-docker-development-environment.md` and
+      `docs/MILESTONE_REPORT_M15.md`.
 - [ ] **16. Frontend Testing & CI/CD** — Add Vitest + React Testing
       Library coverage for critical frontend flows, closing the
       testing asymmetry between backend and frontend. Introduce GitHub

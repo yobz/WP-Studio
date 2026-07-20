@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers regardless of the
+# checkout platform — force LF so a Windows checkout (CRLF by default)
+# doesn't break the shebang/interpreter inside Docker.
+*.sh text eol=lf

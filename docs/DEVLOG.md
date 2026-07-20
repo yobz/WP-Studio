@@ -1,5 +1,63 @@
 # Devlog
 
+## 2026-07-20 — Milestone 15: Docker Development Environment
+
+A one-command local environment — `docker compose up` — for a project
+that's required "install PHP/Composer/Node yourself" since Milestone 1.
+Full reasoning in `docs/adr/0013-docker-development-environment.md`;
+this entry is the what.
+
+**Hand-written Compose, not Laravel Sail — decided by reading Sail's
+actual files, not its reputation.** `backend/composer.json` already had
+`laravel/sail` in `require-dev` (the framework installer's own default),
+never initialized. Read its real runtime Dockerfile and Supervisor
+config before deciding anything: Sail runs `artisan serve` (not
+PHP-FPM), has no reverse proxy, and has no queue-worker or scheduler
+entry at all — three direct conflicts with this milestone's own explicit
+requirements. Five services instead: `backend` (PHP-FPM, Alpine, only
+the extensions this app actually uses), `queue` (`queue:work`),
+`scheduler` (`schedule:work` — Laravel's own cron-free Docker scheduler
+runner), `caddy` (reverse proxy — a three-line `Caddyfile` beats Nginx's
+equivalent FastCGI block for this project's single-app case), and
+`frontend` (`next dev`). SQLite stays the database.
+
+**Named volumes close a bug this project has already been burned by,
+twice.** `storage/`, `bootstrap/cache/`, and `.next/` are named Docker
+volumes — the exact two directories (plus Next's counterpart) this
+project's own Engineering Journal already documented breaking from
+OneDrive-synced-path reparse-point staleness (Milestone 6, recurring
+Milestone 13). Genuine Linux-native volume storage never touches the
+OneDrive sync client at all — the bug class is removed by construction,
+not avoided by luck.
+
+**Four real defects, found by actually running it.** Live validation —
+build, `docker compose up`, a genuine clean-machine bootstrap (`.env`
+and the SQLite database deleted and regenerated from nothing, all 16
+migrations run fresh), the full 142-test backend suite, and a real
+browser session — caught and fixed four bugs no config review would
+have: a missing `oniguruma-dev` build dependency broke `mbstring`
+outright; `storage/app`/`storage/framework/*` built read-only from the
+Windows build context (NTFS has no Unix permission bits to preserve),
+surfacing as a misleading browser CORS error since the resulting 500
+happened before CORS headers could attach; the bind-mounted SQLite
+database was unwritable by the PHP-FPM worker user for the identical
+reason; and a Fast Refresh rebuild remounted the root layout mid-login,
+silently dropping the pending redirect to `/dashboard` — traced to the
+frontend container's file watcher needlessly scanning
+`backend/vendor`'s ~9,800 files on every check. Fixed by shadowing
+`backend/` out of the frontend container's bind mount and switching to
+polling-based watching, which also dropped per-route dev-server compile
+times from 100–200s to 15–20s.
+
+**Verified clean end to end.** Login → Dashboard → WordPress → Media →
+Content → Analytics → Settings, all through the containerized stack,
+zero console errors, zero `axe-core` violations. The AI Assistant
+widget's error path rendered correctly against a fresh container with
+no provider key configured — the same graceful-degradation UX Milestone
+14 built, now confirmed working under Docker too. Production build
+(`next build`) and the full backend test suite both pass inside their
+respective containers.
+
 ## 2026-07-16 — Milestone 14: AI-Assisted Content Generation
 
 The first real AI provider integration, and the last named gap from

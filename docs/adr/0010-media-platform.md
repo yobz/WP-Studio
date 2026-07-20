@@ -265,7 +265,7 @@ bytes).
   upload/download at full resolution — no responsive `srcset`, no
   server-generated thumbnail sizes. Acceptable at this milestone's
   scale (single images, not a high-volume media library yet); a real
-  candidate for Milestone 16 (Performance & Caching), which the brief
+  candidate for Milestone 17 (Performance & Scalability), which the brief
   itself names as this platform's next consumer.
 
 ## Frontend
@@ -320,7 +320,7 @@ milestone has. A real candidate if a future feature needs it.
   'ai_generated'` is already a reserved, unused value in the schema —
   an AI image generation job attaches its output the same way
   `DownloadMediaJob` does today, no schema change.
-- **Milestone 16 (Performance & Caching):** thumbnail/responsive-image
+- **Milestone 17 (Performance & Scalability):** thumbnail/responsive-image
   generation (a natural `GenerateThumbnailJob`/`OptimizeImageJob`,
   named but not built this milestone) and CDN-backed serving are the
   named next consumers of this platform, per the brief's own

@@ -12,11 +12,14 @@ for the full architecture and contract.
   standard in most PHP distributions, including XAMPP's bundled PHP).
 - [Composer](https://getcomposer.org) 2.x.
 
-No local MySQL/Postgres server, Docker, or Node toolchain is required
-to run the backend — local development uses SQLite (a single file,
-zero setup).
+No local MySQL/Postgres server or Node toolchain is required to run the
+backend — local development uses SQLite (a single file, zero setup).
+Docker is optional — see [`../README.md`](../README.md#docker-one-command-setup)
+for the one-command `docker compose up` alternative to everything below
+(PHP-FPM, a queue worker, and the scheduler all run as containers; no
+local PHP/Composer install needed at all).
 
-## Local setup
+## Local setup (without Docker)
 
 ```bash
 cd backend

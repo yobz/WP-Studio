@@ -195,7 +195,7 @@ items are added, resolved, or reprioritized; not a chronological log
 - **No thumbnail or responsive-image generation** (found Milestone 12,
   by design). Every rendered image — grid, list, preview, post detail
   — serves the original upload/download at full resolution. Named as
-  Milestone 16 (Performance & Caching)'s natural starting point; see
+  Milestone 17 (Performance & Scalability)'s natural starting point; see
   `docs/adr/0010-media-platform.md`.
 - **No virus scanning on uploaded/downloaded media** (found Milestone
   12, reviewed per the brief's own instruction, explicitly deferred).
@@ -329,6 +329,24 @@ items are added, resolved, or reprioritized; not a chronological log
   endpoints**~~ **Partially resolved, Milestone 14** — AI is real now
   (see above). Analytics is real (Milestone 10.1); Settings is real
   but read-only (Milestone 10.1) — see `docs/ROADMAP.md`.
+- **No production Docker image or deployment target** (found Milestone
+  15, by design — see
+  [[0013-docker-development-environment]](adr/0013-docker-development-environment.md)).
+  The Dockerfiles are dev-shaped (bind mounts, `next dev`, no
+  multi-stage build); Milestone 19's job.
+- **No general host-UID/GID-matching mechanism in the Docker setup**
+  (found Milestone 15, by design). Live validation found and fixed two
+  specific Windows-bind-mount permission problems with targeted
+  `chmod`/`chown` calls, not a general Sail-style `WWWUSER` build-arg
+  mechanism — deferred until a Linux-host contributor hits a different
+  path with the same class of problem. See
+  [[0013-docker-development-environment]](adr/0013-docker-development-environment.md)'s
+  Deferred section.
+- **Redis is present in `docker-compose.yml` but unused** (found
+  Milestone 15, by design). `CACHE_STORE`/`SESSION_DRIVER`/
+  `QUEUE_CONNECTION` all stay on `database`; the container only starts
+  under `docker compose --profile optional up`. Real integration is
+  Milestone 17 (Performance & Scalability)'s job.
 
 ---
 
@@ -977,6 +995,76 @@ control, with the remaining gap named precisely" are different claims,
 and conflating them is how a real, if narrow, coverage gap quietly
 becomes an unstated assumption in a later session.
 
+### Milestone 15 (Docker Development Environment)
+
+**1. Evaluating a "just use the standard tool" option by reading its
+actual source, not its reputation.** *Problem:* the brief explicitly
+required weighing Laravel's own official Docker tool against a
+hand-written setup, with an explicit instruction not to default to the
+official one just because it exists. *Investigation:* rather than
+reason from general knowledge of what the tool is "supposed" to do,
+read its actual published runtime Dockerfile and process-supervisor
+configuration directly. Found it ran the framework's single-threaded
+built-in development server instead of the production-grade application
+server this milestone's brief specifically required, had no reverse
+proxy at all, and had no background-worker or scheduled-task support
+configured out of the box — three direct conflicts with named
+requirements, not stylistic preferences. *Chosen solution:* a small,
+purpose-built alternative instead, with the reasoning for each rejected
+piece written down before writing any configuration. *Why this matters
+for an interview answer:* "should we use the standard tool" is a
+legitimate question that deserves a real investigation, not a reflexive
+yes — and the investigation is what makes the eventual answer (even a
+"no") defensible instead of just contrarian.
+
+**2. A misleading error message that pointed at the wrong layer
+entirely.** *Problem:* a live browser check failed with what looked
+unambiguously like a cross-origin (CORS) configuration error — the
+browser's own console named CORS specifically. *Investigation:* rather
+than start editing CORS configuration, fetched the actual server
+response directly and found a `500` error underneath, from a completely
+unrelated cause (a filesystem permission failure) that happened to occur
+early enough in the request lifecycle that the response never got its
+CORS headers attached at all — a browser reports *that* as a CORS
+failure, since from its perspective the required header is simply
+missing, regardless of why. *Chosen solution:* traced the actual
+`500`'s stack trace to its root cause (a container filesystem
+permission problem, unrelated to networking entirely) and fixed that
+instead of touching any CORS configuration. *Why this matters for an
+interview answer:* a browser's own error classification is a
+description of a *symptom* at the browser's vantage point, not a
+diagnosis — the same missing-response-header can have causes with
+nothing to do with the category the browser puts it in, and treating
+the browser's label as the root cause would have led to "fixing" an
+already-correct CORS configuration while leaving the real defect in
+place.
+
+**3. Distinguishing "the environment is slow" from "the environment is
+broken" by isolating the actual variable.** *Problem:* a real user flow
+(logging in) silently failed to complete inside the containerized
+environment, with zero errors logged anywhere — the kind of symptom
+that's tempting to misdiagnose as "flaky" and retry away. *Investigation:*
+instrumented the exact sequence of network activity and console output
+around the failure and found a development-server hot-reload event
+firing in the middle of the in-flight action, which remounted part of
+the page and silently discarded the pending post-action navigation that
+was about to run. Rather than treat "sometimes it works, sometimes it
+doesn't" as inherent flakiness, isolated *why* the hot-reload was firing
+at all — tracing it to the development server's file-change watcher
+scanning a completely unrelated, large directory tree (a second
+application's dependency folder) it had no reason to watch, made worse
+by unreliable native file-change notification across the container
+boundary. *Chosen solution:* two independent fixes addressing each
+layer of the actual cause — excluding the irrelevant directory from the
+watched path, and switching to a deterministic (if slightly more
+resource-intensive) file-watching strategy — rather than papering over
+the symptom with longer waits or retries. *Why this matters for an
+interview answer:* intermittent-seeming failures are often fully
+deterministic once the *actual* triggering condition is isolated instead
+of assumed; "add a longer timeout" fixes the symptom's visibility, not
+the defect, and this one had a measurable, fixable root cause the whole
+time.
+
 ---
 
 ## Resume Highlights
@@ -1304,6 +1392,173 @@ to real, shipped, verified work.
   regressions, including dedicated coverage for the retryable/
   non-retryable failure split and the provider-selection mechanism
   itself.
+
+### Milestone 15 (Docker Development Environment)
+
+- Designed and implemented a multi-container local development
+  environment (reverse proxy, application server, background worker,
+  scheduled-task runner, frontend dev server) using an industry-standard
+  container orchestration tool, evaluated against the ecosystem's own
+  official tooling for the same framework and chosen deliberately over
+  it based on a direct comparison against the project's actual
+  requirements rather than the official tool's default reputation.
+- Diagnosed and eliminated a recurring filesystem-caching defect class
+  (previously documented and independently rediscovered twice already
+  in this project's history) by construction — architecting the
+  container storage strategy so the specific failure mode could not
+  recur, rather than adding a workaround for each new location it might
+  appear.
+- Diagnosed a misleading cross-origin error report back to its true,
+  unrelated root cause (a container filesystem permission fault) by
+  reading the actual underlying server response instead of trusting the
+  browser's own error classification, then fixed the real defect at its
+  source.
+- Diagnosed and resolved a silent authentication-flow failure caused by
+  a development-server hot-reload event interrupting an in-flight user
+  action — traced through instrumented network and console logging to
+  its actual root cause (an overly broad file-watch scope crossing
+  container boundaries) rather than accepted as environmental flakiness,
+  and fixed with two complementary, targeted changes.
+- Performed a genuine clean-machine validation (not just a configuration
+  review) of the full environment — a from-scratch bootstrap sequence,
+  the complete backend automated test suite, and an end-to-end browser
+  session covering every major application area — catching and fixing
+  four real, independently-verified defects before considering the work
+  complete, including one that reduced a core developer-facing
+  interaction's latency by roughly 90%.
+
+---
+
+## 2026-07-20 — A CORS error that was actually a filesystem permission fault two layers down
+
+**Problem.** The first live browser check against the new Docker
+environment failed immediately at login: the browser console reported a
+CORS policy violation on the Sanctum CSRF-cookie request — a missing
+`Access-Control-Allow-Origin` header.
+
+**Investigation.** `config/cors.php`, the relevant `.env` values
+(`FRONTEND_URLS`, `SANCTUM_STATEFUL_DOMAINS`), and `bootstrap/cache/`
+for a stale cached config (a previously-documented failure class in this
+project) all checked out correctly. Rather than keep adjusting CORS
+configuration that already looked right, fetched the endpoint directly
+with `curl` and inspected the actual response: a `500 Internal Server
+Error`, with `tempnam(): file created in the system's temporary
+directory` in the body — nothing to do with CORS at all. Laravel's CORS
+middleware only attaches its headers to a response that completes
+successfully through the pipeline; a `500` thrown early enough never
+gets them, and the browser reports that missing header as a CORS
+failure regardless of why it's missing. `storage/logs/laravel.log`
+named the real cause: `SQLSTATE[HY000]: General error: 8 attempt to
+write a readonly database`. `ls -la` inside the container confirmed
+`storage/app` and `storage/framework/*` had built with no write bit at
+all (`dr-xr-xr-x`), owned by `root`, while the actual PHP-FPM worker
+process runs as `www-data`.
+
+**Root cause.** These directories are copied into the image from the
+build context via `COPY backend/ ./`. NTFS (the Windows host filesystem
+Docker Desktop's build context comes from) has no Unix permission bits
+for Docker to preserve — directories that existed only as empty
+`.gitignore` placeholders in git came out of that translation without a
+write bit, while `storage/logs` (which Laravel creates itself at
+runtime, with a normal umask) was unaffected.
+
+**Decision.** Added an explicit `chown www-data:www-data storage
+bootstrap/cache && chmod -R 775 storage bootstrap/cache` in the
+Dockerfile immediately after `COPY backend/ ./`, rather than trying to
+coax a specific permission bit out of the build context.
+
+**A second instance of the identical root cause, on the database
+file.** Fixing the above didn't fully resolve login — the same
+`SQLSTATE[HY000]... readonly database` error persisted, this time
+tracing to `database/database.sqlite` itself: `www-data` still couldn't
+write to it. `database/` is bind-mounted from the host (kept that way
+deliberately for host-inspectability — see the ADR), so its permissions
+come from Docker Desktop's host-to-container UID mapping at *runtime*,
+not from anything the Dockerfile can fix at *build* time — a bind mount
+doesn't exist yet when the image is built. The first attempted fix
+(`chmod -R ug+rwX database` in the entrypoint script) didn't work either:
+the directory's group was `root`, and `www-data` is in its own group,
+not `root`, so group-write permissions never reached the process that
+needed them. `chmod -R o+rwX database` (granting the "other" bucket
+write access, which `www-data` always falls into regardless of group
+membership) was what actually fixed it.
+
+**Lessons learned.** A browser's own error category names the missing
+symptom (a header), not necessarily the actual cause — the moment a
+"CORS error" doesn't yield to CORS configuration changes, the next step
+should be reading the raw server response directly, not iterating on
+increasingly speculative CORS settings. Separately: `chmod ug+rw` is
+only as effective as the target's actual group membership — a
+permission fix that looks obviously sufficient can still miss the one
+process that needed it, if that process's user isn't in the group being
+granted access.
+
+---
+
+## 2026-07-20 — A file watcher scanning an unrelated 9,800-file directory silently broke login
+
+**Problem.** With the CORS/permissions issues above fixed, a full
+browser login flow still failed — the form submitted, the backend
+returned a real `200` for the login request, and then... nothing. No
+error, no redirect to the dashboard, the browser just sat on the login
+page indefinitely. Separately, and initially suspected as an unrelated
+issue, every first request to a given frontend route was taking
+100–200+ seconds to respond.
+
+**Investigation.** Instrumented the browser session to log every
+network response and every console message. Two entries stood out
+around the exact moment of the stuck login: `[Fast Refresh] rebuilding`,
+followed by webpack hot-update requests for `app/layout` — the
+application's root layout was being live-reloaded in the middle of an
+in-flight login submission. A React component remount mid-flight
+orphans any pending state tied to the old component instance, including
+a queued client-side navigation call — which is exactly what silently
+vanished. The question became: what was triggering a rebuild at all,
+with no source file actually being edited?
+
+**Root cause, part one.** This Next.js project has no `next.config.ts`
+(intentionally zero-config since Milestone 1), so its file watcher scans
+everything under its working directory by default. The frontend
+container's bind mount (`.:/app`) included the *entire monorepo* —
+meaning the watcher was scanning `backend/vendor`'s roughly 9,800 PHP
+files on every check, alongside the actual frontend source it cared
+about.
+
+**Root cause, part two.** Separately, native filesystem change
+notifications don't propagate reliably from a Windows bind mount across
+the Docker Desktop VM boundary — a well-documented class of Docker
+Desktop-on-Windows limitation. The dev server's native/partial watch
+implementation appears to have picked up a phantom or delayed change
+from that huge, irrelevant, and non-deterministically-observed
+`backend/vendor` tree and triggered a rebuild it had no real reason to
+trigger.
+
+**Decision.** Two independent, complementary fixes. First, shadowed
+`backend/` out of the frontend container's view entirely with an
+anonymous volume (`/app/backend` in `docker-compose.yml`) — the other
+services each mount `./backend` directly and are unaffected, and the
+frontend genuinely never needs to see PHP source. Second, set
+`WATCHPACK_POLLING=true`, trading some CPU overhead for deterministic,
+reliable change detection instead of the unreliable native/partial
+watch.
+
+**Outcome, measured, not assumed.** Route compile time before either
+fix: 100–200+ seconds per first hit. After excluding `backend/` alone:
+15–20 seconds. Confirmed the excluded-directory fix was the dominant
+factor, not general Docker-on-Windows overhead, by testing the
+before/after difference directly rather than assuming both fixes
+contributed equally. Login now completes and redirects correctly, with
+zero console errors, on the first attempt.
+
+**Lessons learned.** An intermittent-looking failure ("the login just
+doesn't finish, no error") can be fully deterministic once the actual
+triggering event is captured directly — instrumenting console/network
+output turned "sometimes it doesn't work" into "there is exactly one
+log line that explains this every time." Separately: a bind mount's
+scope is a real performance and correctness variable, not just a
+convenience decision — mounting more than an application actually needs
+to see isn't free, and in a file-watching dev server it can actively
+break unrelated functionality.
 
 ---
 

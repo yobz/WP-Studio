@@ -1,9 +1,9 @@
 # WP Studio
 
 A SaaS dashboard for managing one or more WordPress sites — content,
-publishing, analytics, and WordPress integrations from a single place,
-with AI-assisted content generation planned for a later phase. Built as
-a portfolio project demonstrating production-quality full stack
+publishing, analytics, WordPress integrations, and AI-assisted content
+generation (Anthropic Claude / Google Gemini) from a single place. Built
+as a portfolio project demonstrating production-quality full stack
 engineering: Next.js/React frontend, Laravel/MySQL-candidate backend.
 
 Full architecture, stack, and current status: **[`docs/PROJECT.md`](docs/PROJECT.md)**.
@@ -20,28 +20,43 @@ first — it's the reading order for everything else in `docs/`.
   roadmap, and every other project record. The repository is this
   project's memory — see `docs/AI_ENGINEERING_CONTEXT.md`.
 
-## Frontend — local setup
+## Docker — one-command setup
+
+Requires only [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+— no local PHP, Composer, or Node install.
+
+```bash
+docker compose up
+```
+
+Frontend: [http://localhost:3000](http://localhost:3000). Backend API:
+[http://localhost:8000](http://localhost:8000). First run builds the
+images and bootstraps `backend/.env` + the SQLite database automatically
+— give it a minute. See
+[`docs/adr/0013-docker-development-environment.md`](docs/adr/0013-docker-development-environment.md)
+for the full architecture, every container's responsibility, and the
+volume/networking trade-offs.
+
+## Frontend — local setup (without Docker)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The dashboard
-renders against a mix of real API data and a mock service layer until
-every widget is migrated — see `docs/PROJECT.md`'s Known Limitations.
+Open [http://localhost:3000](http://localhost:3000).
 
 Other scripts: `npm run typecheck`, `npm run lint`, `npm run build`,
 `npm run format:check`.
 
-## Backend — local setup
+## Backend — local setup (without Docker)
 
 See [`backend/README.md`](backend/README.md) — SQLite, zero external
 services required.
 
 ## Status
 
-Milestone 7 (Domain & Data Platform) complete. See
+Milestone 15 (Docker Development Environment) complete. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next and
 [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) for exactly where
 the project stands right now.

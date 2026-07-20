@@ -1,0 +1,13 @@
+# Reverse proxy in front of the backend's PHP-FPM service — see
+# docs/adr/0013-docker-development-environment.md for why Caddy over
+# Nginx. Publishes :8000, matching this project's non-Docker
+# `php artisan serve --port=8000` convention exactly, so no frontend
+# env var (NEXT_PUBLIC_API_URL) or backend env var (FRONTEND_URLS,
+# SANCTUM_STATEFUL_DOMAINS) needs to change.
+:8000 {
+	root * /var/www/html/public
+	encode gzip
+
+	php_fastcgi backend:9000
+	file_server
+}
