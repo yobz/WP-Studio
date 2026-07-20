@@ -115,10 +115,29 @@ while writing the CI trigger).
 - `./vendor/bin/pint --test` (full-repo) — clean, after fixing the 7
   pre-existing issues found (see Executive Summary).
 - `.github/workflows/ci.yml` — validated for syntactic correctness
-  (`js-yaml` parse) and structural correctness (both jobs present,
-  expected step sequence); not run against a live GitHub Actions
-  execution as part of this milestone — the first real run will be this
-  branch's own PR.
+  (`js-yaml` parse) and structural correctness locally, then actually
+  run: the first live push caught a real, genuine bug the local
+  environment could never have revealed — see "The First Real CI Run"
+  below.
+
+### The First Real CI Run Found a Bug No Local Check Could
+
+The Backend job failed on its first execution: `php artisan test`
+exited instantly with `Test directory ".../tests/Unit" not found`.
+`backend/tests/Unit/` turned out to be a genuinely empty directory —
+present on the local machine since Milestone 6, but never tracked by
+git (git doesn't track empty directories), so it existed locally by
+historical accident and didn't exist at all on GitHub Actions' clean
+checkout. `phpunit.xml` still referenced it as a configured testsuite.
+This project has never actually had a unit test (all 142 tests are
+Feature-level) — fixed by removing the phantom `Unit` testsuite entry
+from `phpunit.xml` and its matching dangling reference in `Pest.php`,
+not by recreating an empty placeholder directory for hypothetical
+future tests. Verified against a genuinely fresh `git clone` (not just
+"ran locally again") before pushing the fix, given the first push had
+already shown local state can diverge from what a clean checkout sees.
+Second run: both jobs green. Full account in
+`docs/ENGINEERING_JOURNAL.md`'s dated entry.
 
 ---
 
@@ -171,11 +190,10 @@ a developer remembering to run either locally first.
 
 ## Risks
 
-- **This CI workflow has not yet run against a real GitHub Actions
-  execution** — validated for syntax/structure locally, but the first
-  genuine signal on whether the job steps behave exactly as expected
-  (action versions, extension availability, cache behavior) will be
-  this branch's own pull request.
+- ~~**This CI workflow has not yet run against a real GitHub Actions
+  execution**~~ **Resolved.** It has now, twice: the first run caught a
+  real bug (see "The First Real CI Run" above); the second, after the
+  fix, passed both jobs cleanly.
 - **20 tests is a real but narrow safety net** — critical flows are
   covered; a regression in an untested area (most pages/widgets) would
   still only be caught by manual verification or the backend's own test

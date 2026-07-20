@@ -1514,6 +1514,68 @@ to real, shipped, verified work.
 
 ---
 
+## 2026-07-20 — An empty, untracked test directory that only a real clean checkout could expose
+
+**Problem.** The first-ever GitHub Actions run against this repository
+failed on the Backend job, 27 seconds in — `php artisan test` exited
+instantly with `INFO Test directory ".../backend/tests/Unit" not
+found.` and exit code 2. Every step before it (checkout, PHP setup,
+`composer install`, `.env` bootstrap, `pint --test`) had succeeded.
+
+**Investigation.** `php artisan test` had passed locally on this exact
+codebase moments earlier, so the immediate question was what a GitHub
+Actions checkout could possibly see differently. `ls -la
+backend/tests/Unit/` locally showed the directory genuinely existed —
+but completely empty (0 files). `git ls-files backend/tests/Unit/`
+returned nothing at all: git does not track empty directories, so this
+directory had never actually been committed to the repository — not in
+this milestone, not ever. It had existed on this local machine since
+Milestone 6 (its own directory timestamp: `Jul 13`, this project's
+first backend-foundation work), an artifact of the original Laravel
+scaffold that nothing ever removed and nothing ever populated.
+`phpunit.xml` still configured it as a required testsuite
+(`<testsuite name="Unit"><directory>tests/Unit</directory></testsuite>`)
+— a leftover from the same scaffold, since this project has never
+actually written a unit test; every one of its 142 tests is
+Feature-level. Locally, the phantom directory's continued physical
+presence (despite carrying zero tracked content) was enough to satisfy
+PHPUnit's directory-exists check. A genuinely fresh `git clone` — which
+is exactly what GitHub Actions' checkout step performs — has no such
+directory at all, and PHPUnit treats a *configured but missing*
+testsuite directory as a hard error, not a silent skip.
+
+**Decision.** Removed the `Unit` testsuite block from `phpunit.xml`
+entirely, and its matching `pest()->extend(TestCase::class)->in('Unit')`
+binding from `tests/Pest.php` — the honest fix, matching what this
+project's test suite has actually been all along, rather than adding a
+placeholder file just to keep an empty directory trackable for
+hypothetical future unit tests nothing currently needs.
+
+**Verification, deliberately more rigorous than "ran it again
+locally."** Given the entire bug was "local state doesn't match a
+clean checkout," re-running the fix only on the already-tainted local
+working tree would have proven nothing. Instead: committed the fix,
+then ran `git clone` (a real, second, independent copy of the
+repository, not the working directory `composer install` had already
+touched) into a scratch location and ran the exact CI sequence —
+`composer install`, `.env` bootstrap, `key:generate`, `pint --test`,
+`php artisan test` — against *that* clone. Clean pass, 142/142, before
+pushing. The subsequent live GitHub Actions run confirmed it: both jobs
+green.
+
+**Lessons learned.** A local development environment accumulates state
+a fresh clone never has — installed dependencies, generated caches, and
+in this case a directory that existed for years without ever being
+part of the actual repository. "It works locally" and "it works from a
+clean checkout" are different claims, and the gap between them is
+precisely what CI exists to find — this is the textbook version of that
+gap, not an edge case: an artifact old enough to predate this project's
+own testing conventions, invisible to every local check because every
+local check ran on a machine that had quietly been carrying it for the
+project's entire history.
+
+---
+
 ## 2026-07-20 — A webpack internal crash from a stale `.next` cache, right after a dependency install
 
 **Problem.** Immediately after installing Vitest and its supporting

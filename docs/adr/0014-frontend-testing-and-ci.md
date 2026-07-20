@@ -92,6 +92,23 @@ it. All seven were mechanical (`ordered_imports`, `no_unused_imports`,
 `fully_qualified_strict_types`) — `./vendor/bin/pint` applied and
 re-verified with a full test run before proceeding.
 
+## A Second Gap, Caught by the Live Run Itself
+
+Every check above was run locally before this milestone was called
+done — and the very first live GitHub Actions execution still failed,
+on a bug none of those local checks could have caught: `phpunit.xml`
+referenced a `Unit` testsuite directory that had been empty and
+untracked by git since Milestone 6, present on the local machine by
+historical accident, absent on any genuinely fresh checkout. Fixed by
+removing the phantom testsuite entry — this project has never had a
+real unit test, only Feature-level ones — and re-verified against an
+actual fresh `git clone` (not just "ran locally again") before pushing
+the fix. Full account in `docs/ENGINEERING_JOURNAL.md`'s dated entry.
+The lesson generalizes past this one bug: no amount of "it works on my
+machine" checking substitutes for the specific thing CI verifies — a
+truly clean checkout, which local state can silently diverge from for
+years without anyone noticing.
+
 ## Rejected Alternatives
 
 **End-to-end (Playwright) tests as part of this milestone.** The brief

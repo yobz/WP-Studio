@@ -32,6 +32,15 @@ ignore it.
 declares an optional peer wanting Babel 8; `shadcn`'s own tree wants
 Babel 7. Pinned `^5.2.0` instead of forcing an unverified resolution.
 
+**The first live CI run found what no local check could.** It failed
+on `php artisan test` — `phpunit.xml` still referenced `tests/Unit/`,
+an empty directory git had never tracked (present locally since
+Milestone 6 by accident, absent on any fresh clone). Every test in this
+project is Feature-level, so the fix was removing the phantom testsuite
+entry, verified against a real fresh `git clone` before pushing again.
+Second run: both jobs green. Full account in
+`docs/ENGINEERING_JOURNAL.md`.
+
 ## 2026-07-20 — Milestone 15: Docker Development Environment
 
 A one-command local environment — `docker compose up` — for a project

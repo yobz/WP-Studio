@@ -6,11 +6,12 @@ that). If you're starting a new session, read this first.
 
 ## 2026-07-20 — End of Milestone 16 (Frontend Testing & CI/CD)
 
-**Milestone state.** Milestone 16 is implemented, validated, and
-documented — see `docs/MILESTONE_REPORT_M16.md` for the full
-independent review. `docs/ROADMAP.md` marks it complete. Not yet
-committed — waiting for approval per the milestone lifecycle's standing
-rule.
+**Milestone state.** Milestone 16 is implemented, validated, documented,
+committed, and pushed — see `docs/MILESTONE_REPORT_M16.md` for the full
+independent review. `docs/ROADMAP.md` marks it complete. The first live
+GitHub Actions run (triggered by the push) failed on a real bug — see
+gotcha #4 below — fixed in a same-day follow-up commit; the next run
+passed both jobs cleanly.
 
 **New: the frontend has real automated tests, and both apps have CI.**
 `npm run test` (Vitest + React Testing Library) — 20 tests, 5 files,
@@ -39,6 +40,15 @@ runners, running on every PR and push to `master`. Full reasoning in
    in a new shape** (Milestones 6, 13, 15, now 16) — delete `.next/`
    before investigating the error itself. See
    `docs/ENGINEERING_JOURNAL.md`'s 2026-07-20 entry.
+4. **`backend/tests/Unit/` no longer exists, deliberately.** It was an
+   empty, untracked directory (git doesn't track empty directories)
+   left over since Milestone 6 — present locally by accident, absent on
+   any fresh clone, and the cause of this milestone's first live CI
+   failure (`phpunit.xml` still referenced it as a testsuite). Every
+   test in this project is Feature-level; don't recreate `tests/Unit/`
+   without also adding it back to `phpunit.xml`'s `<testsuites>` and
+   `tests/Pest.php`'s bindings — otherwise the exact same failure
+   recurs. See `docs/ENGINEERING_JOURNAL.md`'s matching dated entry.
 
 **Immediate next step.** Milestone 17 (Performance & Scalability) is
 next per `docs/ROADMAP.md` — but is **explicitly not started**, waiting
@@ -67,7 +77,8 @@ for approval per the milestone lifecycle's standing rule.
 **20/20 passing**. `typecheck`/`lint`/`build` all clean. Backend:
 `php artisan test` — **142/142 passing** (unchanged).
 `./vendor/bin/pint --test` (full-repo) — clean, after fixing 7
-pre-existing issues found during this milestone's own validation. CI
-workflow validated for syntax/structure locally; not yet run against a
-live GitHub Actions execution — that will be this branch's own PR. See
+pre-existing issues found during this milestone's own validation. CI:
+run live twice — the first run failed on the `tests/Unit` bug above,
+the second (after the fix, re-verified against a genuine fresh
+`git clone` before pushing) passed both jobs. See
 `docs/MILESTONE_REPORT_M16.md`.
