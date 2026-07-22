@@ -14,6 +14,9 @@ use Throwable;
 
 class WordPressPostMapper implements ContentTypeMapper
 {
+    /** @var array<int, Post> keyed by wordpress_post_id, scoped to the current page */
+    private array $existingByWordpressId = [];
+
     public function contentType(): string
     {
         return 'post';
@@ -52,12 +55,19 @@ class WordPressPostMapper implements ContentTypeMapper
         );
     }
 
+    public function preloadExisting(Site $site, array $wordpressIds): void
+    {
+        $this->existingByWordpressId = Post::query()
+            ->where('site_id', $site->id)
+            ->whereIn('wordpress_post_id', $wordpressIds)
+            ->get()
+            ->keyBy('wordpress_post_id')
+            ->all();
+    }
+
     public function upsert(Site $site, MappedContent $mapped): SyncOutcome
     {
-        $existing = Post::query()
-            ->where('site_id', $site->id)
-            ->where('wordpress_post_id', $mapped->wordpressId)
-            ->first();
+        $existing = $this->existingByWordpressId[$mapped->wordpressId] ?? null;
 
         if ($existing === null) {
             $post = $site->posts()->create([

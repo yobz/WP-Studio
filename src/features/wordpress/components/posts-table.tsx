@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { AlertCircle, FileText } from "lucide-react";
 
@@ -27,13 +28,9 @@ interface PostsTableProps {
 }
 
 function PostsTable({ siteId }: PostsTableProps) {
-  const {
-    data: posts,
-    isPending,
-    isError,
-    refetch,
-    isRefetching,
-  } = useSitePosts(siteId);
+  const [page, setPage] = useState(1);
+  const { data, isPending, isError, refetch, isRefetching, isPlaceholderData } =
+    useSitePosts(siteId, page);
 
   if (isPending) {
     return <LoadingState message="Loading posts…" />;
@@ -58,6 +55,8 @@ function PostsTable({ siteId }: PostsTableProps) {
       />
     );
   }
+
+  const { posts, pagination } = data;
 
   if (posts.length === 0) {
     return (
@@ -113,6 +112,32 @@ function PostsTable({ siteId }: PostsTableProps) {
           })}
         </ul>
       </CardContent>
+      {pagination.last_page > 1 ? (
+        <div className="flex items-center justify-between gap-3 border-t p-4">
+          <Typography variant="caption">
+            Page {pagination.current_page} of {pagination.last_page} ·{" "}
+            {pagination.total} posts
+          </Typography>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isPlaceholderData || page >= pagination.last_page}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }

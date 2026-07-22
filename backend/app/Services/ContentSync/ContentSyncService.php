@@ -58,6 +58,8 @@ class ContentSyncService
 
                 $totalPages = min($collection->totalPages, self::MAX_PAGES);
 
+                $mapper->preloadExisting($site, array_column($collection->items, 'id'));
+
                 foreach ($collection->items as $item) {
                     if (! $mapper->shouldImport($item)) {
                         continue;

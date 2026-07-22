@@ -941,6 +941,47 @@ ran `--dirty`) surfaced 7 pre-existing style issues in files this
 milestone never touched. Fixed first, so the new CI gate starts green
 instead of teaching the team to ignore a red check.
 
+## Performance & Scalability (Milestone 17)
+
+**Measure first, fix what's measured.** `docs/adr/0005-domain-model.md`
+and `docs/adr/0008-content-synchronization.md` both named real
+performance gaps and explicitly deferred them pending "a measured
+problem, not before." This milestone was that measurement: a
+temporarily inflated dev database (34 sites, 6,012 posts, 2,756
+analytics snapshots — restored to the real demo data before this
+milestone was called done) profiled with `DB::listen()` +
+`microtime()` against every candidate hot path, rather than guessing.
+Full findings, fixes, and the Redis decision in
+`docs/adr/0015-performance-and-scalability.md`.
+
+**Two real, now-quantified problems, fixed.** The Posts index returned
+every matching row with no `LIMIT` — 142ms for 6,012 rows, and rising
+linearly with a workspace's real post count. Added standard
+page-number pagination (`page`/`per_page`, capped at 100, default 50)
+via a `meta.pagination` block on the existing `ApiResponse` envelope —
+additive, no breaking change. `WordPressPostMapper::upsert()` ran one
+lookup query per WordPress item — 300 queries for 100 items. Added
+`preloadExisting()` to the `ContentTypeMapper` contract, batch-loading
+each page's existing posts in one query before the upsert loop — 300
+queries down to 201, the full 100-query reduction the batch predicted.
+
+**One real, measured frontend win.** `npm run build`'s own route-size
+table showed `/dashboard` at 249kB First Load JS against 103–188kB for
+every other route — `recharts`, imported eagerly for a single chart
+widget, was blocking the rest of the dashboard's hydration. Code-split
+via `next/dynamic({ ssr: false })` (the same pattern already used for
+`ReactQueryDevtools`). Result: 249kB → 144kB (−42%).
+
+**Redis: evaluated against real numbers, not implemented.** The
+`docker-compose.yml` `redis` service (present-but-unused since
+Milestone 15) was this milestone's actual chance to decide. Measured
+`DashboardService`'s aggregate queries — the most obvious caching
+candidate — at 5–12ms even at the inflated dataset's scale: already
+fast enough that a cache layer's invalidation complexity wouldn't be
+worth the saving. This is the decision, not a placeholder for one —
+Redis stays present-but-unused; revisit only if real future usage data
+shows a specific, repeated, expensive read.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -993,12 +1034,14 @@ instead of teaching the team to ignore a red check.
   Milestone 19 (Cloud Deployment & Security Hardening), the same
   pattern as the SQLite→MySQL production decision.
 - No repository layer, no real analytics *events* schema (only daily
-  snapshots), no pagination on Sites/Posts index endpoints, no
-  dedicated workspace-deletion flow, SQLite (not a server database) in
-  local development — all deliberate Milestone 6–7 scope decisions,
-  not gaps; see both ADRs' Trade-offs sections for the reasoning
-  behind each, and `docs/ENGINEERING_JOURNAL.md`'s Future Backlog for
-  what each unblocks.
+  snapshots), no dedicated workspace-deletion flow, SQLite (not a
+  server database) in local development — all deliberate Milestone 6–7
+  scope decisions, not gaps; see both ADRs' Trade-offs sections for the
+  reasoning behind each, and `docs/ENGINEERING_JOURNAL.md`'s Future
+  Backlog for what each unblocks. ~~No pagination on Sites/Posts index
+  endpoints~~ **Posts resolved, Milestone 17** — see below; Sites
+  remains unpaginated, by design (no measured problem at a workspace's
+  realistic scale).
 - `wordpress_version` and `php_version` are always `null` on a real
   connection (Milestone 9, by design) — stock WordPress doesn't expose
   either through its public REST API without a companion plugin. See
@@ -1025,10 +1068,11 @@ instead of teaching the team to ignore a red check.
   The 20-page (2,000-post) safety cap itself remains, now as a bound
   on the async job's own execution rather than on a blocking request;
   see `docs/adr/0009-background-job-platform.md`.
-- `WordPressPostMapper::upsert()` runs one lookup query per WordPress
-  item rather than a batch operation — up to ~100 queries per page at
-  today's `per_page=100` (Milestone 10, by design, not yet a measured
-  problem at real usage). See the ADR's Performance section.
+- ~~`WordPressPostMapper::upsert()` runs one lookup query per WordPress
+  item rather than a batch operation~~ **Resolved, Milestone 17** —
+  `preloadExisting()` batch-loads each page's existing posts in one
+  query; measured 300 → 201 queries for 100 items. See
+  `docs/adr/0015-performance-and-scalability.md`.
 - ~~System Health's `backgroundQueue` is an honest, hardcoded
   placeholder~~ **Resolved, Milestone 11** — real `pending`/`failed`
   counts and a derived `degraded`/`operational` status, read from the
@@ -1038,10 +1082,11 @@ instead of teaching the team to ignore a red check.
   design). No product decision yet about what a user should be able to
   change; building the form ahead of that decision would be
   speculative scope.
-- Sites/Posts index endpoints still have no pagination (named since
-  Milestone 7, reviewed again and deliberately deferred in Milestone
-  10.1 — real page-size/UI decision still needed, not a reflexive
-  default).
+- ~~Sites/Posts index endpoints still have no pagination~~ **Posts
+  resolved, Milestone 17** (`page`/`per_page`, default 50, max 100 —
+  see `docs/adr/0015-performance-and-scalability.md`). Sites remains
+  unpaginated, by design — no measured problem at a workspace's
+  realistic scale (single digits to tens of connected sites).
 - `DashboardService::recentActivity()` runs three separate queries and
   merges them in application code rather than one query against a
   dedicated activity-log table (Milestone 10.1, by design) — no such
@@ -1134,8 +1179,12 @@ instead of teaching the team to ignore a red check.
 - Redis is present in `docker-compose.yml` but genuinely unused
   (Milestone 15, by design) — `CACHE_STORE`/`SESSION_DRIVER`/
   `QUEUE_CONNECTION` all stay on `database`; the container only starts
-  under `docker compose --profile optional up`. Real integration is
-  Milestone 17's job.
+  under `docker compose --profile optional up`. **Milestone 17
+  evaluated real integration against measured query timings and
+  decided against it** — `DashboardService`'s aggregate queries, the
+  most obvious caching candidate, measured 5–12ms even at an inflated
+  34-site/6,012-post dataset. This is a decision, not a deferral; see
+  `docs/adr/0015-performance-and-scalability.md`.
 - Frontend test coverage is deliberately bounded to critical flows, not
   every component (Milestone 16, by design) — presentational components
   with no branching logic aren't tested individually. See
@@ -1151,10 +1200,19 @@ instead of teaching the team to ignore a red check.
 - CI runs on native GitHub Actions runners, not the Milestone 15 Docker
   images (Milestone 16, by design) — that stack is scoped to developer
   experience, not CI; see `docs/adr/0014-frontend-testing-and-ci.md`.
+- `recharts` is loaded via a client-only `next/dynamic` split, not
+  eagerly bundled (Milestone 17, by design) — the loading placeholder
+  briefly shows a skeleton on first dashboard visit rather than the
+  real chart; a deliberate, measured trade-off (−42% First Load JS) not
+  a bug. See `docs/adr/0015-performance-and-scalability.md`.
+- Sites and Media index endpoints remain unpaginated (Milestone 17, by
+  design) — the same unbounded-query shape Posts had, but no measured
+  problem at either's realistic scale today. Revisit if either grows
+  the way Posts did.
 
 ## Status
 
-Milestone 16 (Frontend Testing & CI/CD) complete. See `ROADMAP.md` for
+Milestone 17 (Performance & Scalability) complete. See `ROADMAP.md` for
 the full milestone list, `DEVLOG.md` for a running log of completed
 work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
 decisions and the reasoning behind them.

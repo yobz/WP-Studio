@@ -41,8 +41,22 @@ class PostController extends Controller
             }
         }
 
+        $perPage = $request->validated('per_page') ?? 50;
+        $posts = $query->latest()->paginate(
+            perPage: $perPage,
+            page: $request->validated('page') ?? 1,
+        );
+
         return ApiResponse::success(
-            data: PostResource::collection($query->latest()->get()),
+            data: PostResource::collection($posts->items()),
+            meta: [
+                'pagination' => [
+                    'current_page' => $posts->currentPage(),
+                    'per_page' => $posts->perPage(),
+                    'total' => $posts->total(),
+                    'last_page' => $posts->lastPage(),
+                ],
+            ],
         );
     }
 

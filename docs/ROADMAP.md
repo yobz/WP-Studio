@@ -343,11 +343,23 @@ product under real usage, not just a single-request demo.
 
 ## Release v0.95 — Production Hardening
 
-- [ ] **17. Performance & Scalability** — Introduce Redis-backed
-      caching where justified, optimize expensive queries, improve
-      frontend bundle loading, and validate performance under
-      realistic datasets. Continue following ADR 0005 by avoiding
-      premature optimization.
+- [x] **17. Performance & Scalability** — Measured every candidate hot
+      path (`DB::listen()` + `microtime()`) against a temporarily
+      inflated dataset (34 sites, 6,012 posts, 2,756 snapshots) before
+      changing anything, continuing ADR 0005's anti-premature-
+      optimization discipline. Two real, quantified problems fixed: the
+      Posts index's unbounded query (142ms/6,012 rows — now paginated,
+      `page`/`per_page`, default 50/max 100) and
+      `WordPressPostMapper::upsert()`'s N+1 (300 queries/100 items — now
+      201, via a batch `preloadExisting()` added to the
+      `ContentTypeMapper` contract). One frontend win: `recharts` was
+      blocking the dashboard's initial hydration for one widget below
+      the fold — code-split via `next/dynamic`, First Load JS 249kB →
+      144kB. Redis evaluated against real measured timings
+      (`DashboardService`'s aggregates: 5–12ms even at inflated scale)
+      and **not implemented** — the data doesn't justify it; stays
+      present-but-unused in Docker Compose per Milestone 15. See
+      `docs/adr/0015-performance-and-scalability.md`.
 - [ ] **18. Observability** — Implement structured logging, health
       checks, Sentry/OpenTelemetry integration, request tracing, and
       operational metrics using the integration points established in

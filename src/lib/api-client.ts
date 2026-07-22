@@ -98,14 +98,11 @@ async function parseEnvelope<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
   const headers = MUTATING_METHODS.has(method) ? await csrfHeader() : {};
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -115,8 +112,29 @@ export async function apiFetch<T>(
       ...init?.headers,
     },
   });
+}
 
-  return parseEnvelope<T>(response);
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  return parseEnvelope<T>(await rawFetch(path, init));
+}
+
+/**
+ * Like apiFetch, but also returns the envelope's `meta` — for endpoints
+ * (e.g. paginated lists) where the caller needs more than just `data`.
+ */
+export async function apiFetchWithMeta<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data: T; meta: Record<string, unknown> }> {
+  const response = await rawFetch(path, init);
+  const metaSource = response.clone();
+  const data = await parseEnvelope<T>(response);
+  const body = (await metaSource.json()) as { meta?: Record<string, unknown> };
+
+  return { data, meta: body.meta ?? {} };
 }
 
 /**

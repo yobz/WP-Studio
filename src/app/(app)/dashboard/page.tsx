@@ -1,5 +1,5 @@
 import { AiAssistantPreview } from "@/features/dashboard/components/ai-assistant-preview";
-import { AnalyticsPreview } from "@/features/dashboard/components/analytics-preview";
+import { AnalyticsPreview } from "@/features/dashboard/components/analytics-preview-lazy";
 import { KpiCards } from "@/features/dashboard/components/kpi-cards";
 import { QuickActions } from "@/features/dashboard/components/quick-actions";
 import { RecentActivity } from "@/features/dashboard/components/recent-activity";

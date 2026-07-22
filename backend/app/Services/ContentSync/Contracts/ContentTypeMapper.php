@@ -16,6 +16,12 @@ interface ContentTypeMapper
 
     public function map(array $wordpressItem): MappedContent;
 
+    /**
+     * Batch-loads existing records for the given WordPress IDs so upsert()
+     * can look them up in memory instead of running one query per item.
+     */
+    public function preloadExisting(Site $site, array $wordpressIds): void;
+
     public function upsert(Site $site, MappedContent $mapped): SyncOutcome;
 
     public function countSynced(Site $site): int;

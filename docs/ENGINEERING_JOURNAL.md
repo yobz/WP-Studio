@@ -76,20 +76,20 @@ items are added, resolved, or reprioritized; not a chronological log
   stays deliberately mocked — no real AI provider integration exists,
   unchanged from its Milestone 5/7 deferral (Milestone 14's job). See
   `docs/MILESTONE_REPORT_M10_1.md`.
-- **Sites/Posts index endpoints have no pagination** (found Milestone
-  7, by design — see the ADR's Performance section). Fine at today's
-  seeded volume; a real gap once a workspace has hundreds of posts.
-  Needs a real page-size decision before implementing, not a reflexive
-  default. **Update, Milestone 10:** the Posts list on
-  `/wordpress/[id]/posts` inherits this same gap directly — it's the
-  first UI actually rendering `Post` rows, so this is no longer a
-  theoretical future cost once real sync volume exists. **Update,
-  Milestone 10.1:** reviewed again as part of this milestone's own
-  API-completion scope and deliberately deferred rather than
-  implemented — still needs the same real page-size/UI decision this
-  item has always named, and this milestone's actual objective (mock
-  → real migration) didn't depend on it. Not silently dropped a second
-  time; still open.
+- ~~**Sites/Posts index endpoints have no pagination**~~ (found
+  Milestone 7; reaffirmed Milestone 10 once `/wordpress/[id]/posts`
+  started rendering real `Post` rows; reviewed again and deliberately
+  deferred in Milestone 10.1, still needing the real page-size decision
+  this item had always named). **Posts resolved, Milestone 17** —
+  measured first (142ms for 6,012 unpaginated rows against a
+  temporarily inflated dataset), then fixed: `page`/`per_page` (default
+  50, max 100) via a `meta.pagination` block on the existing envelope.
+  `PostsTable` gained Previous/Next controls; `RecentDrafts` (identical
+  unbounded shape) capped at `per_page=5` instead. See
+  [[0015-performance-and-scalability]](adr/0015-performance-and-scalability.md).
+  **Sites remains open, by design** — no measured problem at a
+  workspace's realistic scale (single digits to tens of connected
+  sites); revisit only if that changes.
 - **Workspace deletion has no dedicated flow** (found Milestone 7, by
   design). `Workspace::delete()` today hard-deletes and cascades to
   every site/post — correct as a database constraint, but a real
@@ -113,15 +113,19 @@ items are added, resolved, or reprioritized; not a chronological log
   "Version Detection" section for the full accounting of what is and
   isn't obtainable today. Revisit if a WP Studio companion plugin ever
   gets built (see the ADR's Future Extensibility).
-- **`WordPressPostMapper::upsert()` runs one lookup query per
-  WordPress item, not a batch operation** (found Milestone 10, by
-  design — see
+- ~~**`WordPressPostMapper::upsert()` runs one lookup query per
+  WordPress item, not a batch operation**~~ **Resolved, Milestone 17.**
+  (Found Milestone 10, by design — see
   [[0008-content-synchronization]](adr/0008-content-synchronization.md)'s
-  Performance section). Up to ~100 `SELECT` queries per page at
-  today's `per_page=100`. Not a measured problem at today's real usage
-  (manual, user-triggered sync against a handful of connected sites);
-  revisit with a real batch-upsert redesign once a real workspace's
-  post volume makes it one.
+  Performance section; up to ~100 `SELECT` queries per page at
+  `per_page=100`, explicitly accepted pending "a measured problem.")
+  Measured at 300 queries/1,297ms for 100 items against a temporarily
+  inflated dataset — a real problem. Fixed via a new
+  `preloadExisting()` method on the `ContentTypeMapper` contract,
+  batch-loading each page's existing posts in one query before the
+  upsert loop; re-measured after the fix at 201 queries/1,094ms, the
+  full predicted 100-query reduction. See
+  [[0015-performance-and-scalability]](adr/0015-performance-and-scalability.md).
 - ~~**Content sync is fully synchronous**~~ **Resolved, Milestone 11.**
   `POST /sites/{site}/sync` now dispatches `SyncWordPressPostsJob`
   instead of blocking the request — see
@@ -345,8 +349,15 @@ items are added, resolved, or reprioritized; not a chronological log
 - **Redis is present in `docker-compose.yml` but unused** (found
   Milestone 15, by design). `CACHE_STORE`/`SESSION_DRIVER`/
   `QUEUE_CONNECTION` all stay on `database`; the container only starts
-  under `docker compose --profile optional up`. Real integration is
-  Milestone 17 (Performance & Scalability)'s job.
+  under `docker compose --profile optional up`. **Evaluated, Milestone
+  17: not integrated, on measured evidence.** `DashboardService`'s
+  aggregates — the most obvious caching candidate — measured 5–12ms
+  even at an inflated 34-site/6,012-post dataset, already fast enough
+  that a cache layer's invalidation complexity wouldn't be worth the
+  saving. A real decision, not a further deferral; see
+  [[0015-performance-and-scalability]](adr/0015-performance-and-scalability.md).
+  Revisit only if future real usage data shows a specific, repeated,
+  expensive read.
 - **Frontend test coverage is bounded to critical flows, not every
   component** (found Milestone 16, by design). See
   [[0014-frontend-testing-and-ci]](adr/0014-frontend-testing-and-ci.md).

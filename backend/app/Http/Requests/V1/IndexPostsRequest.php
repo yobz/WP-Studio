@@ -21,6 +21,8 @@ class IndexPostsRequest extends FormRequest
                 Rule::in([...array_column(PostStatus::cases(), 'value'), 'unpublished']),
             ],
             'site_id' => ['sometimes', 'integer', 'exists:sites,id'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];
     }
 }

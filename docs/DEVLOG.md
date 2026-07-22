@@ -1,5 +1,55 @@
 # Devlog
 
+## 2026-07-20 — Milestone 17: Performance & Scalability
+
+Two ADRs (`0005-domain-model.md`, `0008-content-synchronization.md`)
+had already named real performance gaps and explicitly deferred them
+pending "a measured problem, not before." This milestone was that
+measurement. Full reasoning in
+`docs/adr/0015-performance-and-scalability.md`.
+
+**Measured first, on a realistic dataset, not a guess.** The real demo
+seed is intentionally tiny — profiling against it would prove nothing.
+Backed up the dev database, temporarily inflated it (34 sites, 6,012
+posts, 2,756 snapshots), and measured every candidate hot path with
+`DB::listen()` + `microtime()`. `DashboardService`'s aggregates: 5–12ms,
+already fast, no fix needed. The Posts index: 142ms for 6,012
+unpaginated rows — a real problem. `WordPressPostMapper::upsert()`: 300
+queries for 100 items — a real, named-since-Milestone-8 N+1. Restored
+the original dev database before this milestone's own validation.
+
+**Posts index: paginated.** `page`/`per_page` (default 50, max 100) via
+a `meta.pagination` block on the existing `ApiResponse` envelope —
+additive, nothing else changes shape. `PostsTable` gained Previous/Next
+controls (only rendered when there's more than one page); the
+dashboard's `RecentDrafts` widget, which had the identical unbounded
+query, got capped at `per_page=5` instead — a "recent" widget needs a
+bound, not pagination UI.
+
+**The sync N+1: fixed with a batch preload, not a rewrite.** Added
+`preloadExisting()` to the `ContentTypeMapper` contract —
+`WordPressPostMapper` now batch-loads a page's existing posts in one
+query before the upsert loop instead of one lookup per item. Measured
+after the fix: 300 → 201 queries for 100 items, exactly the predicted
+100-query reduction. `ContentSyncService`'s orchestrator needed exactly
+one new call site — the interface-first design from Milestone 8 paid
+off here.
+
+**Dashboard bundle: recharts was blocking everything else.**
+`/dashboard`'s First Load JS (249kB) dwarfed every other route
+(103–188kB) — a chart library, loaded eagerly for one widget among
+nine. Code-split via `next/dynamic({ ssr: false })`, the same pattern
+already used for `ReactQueryDevtools`. Result: 249kB → 144kB, −42%.
+
+**Redis: a real decision, not a deferral.** Evaluated actual
+integration against the measured numbers above — `DashboardService`'s
+aggregates are already fast enough that a cache layer's invalidation
+complexity wouldn't be worth the saving, and neither of the two real
+problems found (Posts pagination, the sync N+1) was a caching problem
+in the first place. Redis stays present-but-unused in Docker Compose,
+exactly as Milestone 15 left it — this milestone's job was to actually
+check, not to build a cache nobody's data asked for.
+
 ## 2026-07-20 — Milestone 16: Frontend Testing & CI/CD
 
 Closes the testing asymmetry every milestone review since M5 has
