@@ -1102,6 +1102,40 @@ scanning on media uploads is documented as a concrete recommendation
 built as speculative code with no real service to test it against.
 See `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
 
+## Production Release (Milestone 20)
+
+**An audit-and-polish milestone, deliberately not a feature one** —
+explicit guidance to resist adding new capabilities and focus on
+validating and documenting what already exists. The last milestone in
+`docs/ROADMAP.md`, closing v1.0.
+
+**Dependency audit.** `composer audit`: 4 medium-severity Guzzle
+advisories, fix verified safe within Laravel's existing version
+constraint, not applied this session (a `repo.packagist.org`
+connectivity issue in this environment — confirmed host-specific,
+`npm`'s registry responded normally at the same time). `npm audit`: 7
+vulnerabilities, 1 fixed, 2 confirmed pinned inside Next.js 15's own
+bundled dependencies (unfixable without a breaking downgrade — the
+`postcss` one already a known, tracked risk since Milestone 1), 1
+dev-tool-only finding reviewed and accepted.
+
+**Documentation consistency audit.** Found and fixed real staleness in
+eight files — five ADRs still described things as deferred to
+Milestone 19 after it had actually resolved them, plus the root
+`README.md`, which was four milestones out of date (still said
+"Milestone 15... complete," still called PostgreSQL a "MySQL-
+candidate" after Milestone 19 had already decided and verified it).
+
+**Disaster recovery review.** New `docs/DEPLOYMENT.md` §9 — reviewing
+existing platform mechanisms, not building new infrastructure. Verified
+(not assumed) every migration has a real, non-empty `down()` method.
+
+**Production readiness audit, verified not re-asserted.** Zero raw SQL
+anywhere in the app, zero `dangerouslySetInnerHTML` anywhere in the
+frontend, zero committed `.env` files, ever — each confirmed by
+directly searching the codebase, not recalled from earlier milestones'
+own claims. See `docs/adr/0018-production-release.md`.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -1379,13 +1413,26 @@ See `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
   re-evaluated from Milestone 12) — documented as a concrete
   recommendation in `docs/DEPLOYMENT.md`, not built as code with no
   real scanning service to verify it against.
+- `guzzlehttp/guzzle` has 4 known medium-severity advisories, fix
+  verified safe within Laravel's existing version constraint but not
+  applied (Milestone 20) — blocked by a `repo.packagist.org`
+  connectivity issue in this environment, not a compatibility concern.
+  Run `composer update guzzlehttp/guzzle --with-all-dependencies` once
+  network access allows it.
+- Two `npm audit` findings (`postcss`, `sharp`) are pinned inside
+  Next.js 15's own bundled dependencies and can't be fixed without a
+  breaking downgrade (Milestone 20, confirmed by reading Next's own
+  `package.json` dependency ranges directly) — the `postcss` one
+  already a known, tracked risk since Milestone 1. Re-check on every
+  future Next.js version bump.
 
 ## Status
 
-Milestone 19 (Cloud Deployment & Security Hardening) complete —
-deployment-ready, not deployed (a deliberate scope decision; see
-`docs/adr/0017-cloud-deployment-and-security-hardening.md`). See
-`ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running
-log of completed work, `docs/DEPLOYMENT.md` for the actual deploy
-runbook, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
-architectural decisions and the reasoning behind them.
+Milestone 20 (Production Release) complete — the last milestone on
+`docs/ROADMAP.md`, closing v1.0. See `ROADMAP.md` for the full
+milestone list, `DEVLOG.md` for a running log of completed work,
+`docs/DEPLOYMENT.md` for the actual deploy runbook, and `docs/adr/` /
+`docs/ENGINEERING_JOURNAL.md` for architectural decisions and the
+reasoning behind them. Real, accurately-documented future work
+remains — see this file's Known Limitations above and every ADR's own
+Deferred/Future Evolution sections — none of it silently dropped.

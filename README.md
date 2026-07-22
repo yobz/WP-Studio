@@ -4,7 +4,9 @@ A SaaS dashboard for managing one or more WordPress sites — content,
 publishing, analytics, WordPress integrations, and AI-assisted content
 generation (Anthropic Claude / Google Gemini) from a single place. Built
 as a portfolio project demonstrating production-quality full stack
-engineering: Next.js/React frontend, Laravel/MySQL-candidate backend.
+engineering: Next.js/React frontend, Laravel backend (SQLite locally,
+PostgreSQL in production — see
+[`docs/adr/0017-cloud-deployment-and-security-hardening.md`](docs/adr/0017-cloud-deployment-and-security-hardening.md)).
 
 Full architecture, stack, and current status: **[`docs/PROJECT.md`](docs/PROJECT.md)**.
 Starting a new working session? Read **[`docs/AI_ENGINEERING_CONTEXT.md`](docs/AI_ENGINEERING_CONTEXT.md)**
@@ -56,7 +58,9 @@ services required.
 
 ## Status
 
-Milestone 15 (Docker Development Environment) complete. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next and
+Milestone 20 (Production Release) complete — the last milestone on
+[`docs/ROADMAP.md`](docs/ROADMAP.md), closing v1.0. The app is
+deployment-ready, not deployed; see
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the actual runbook and
 [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) for exactly where
 the project stands right now.

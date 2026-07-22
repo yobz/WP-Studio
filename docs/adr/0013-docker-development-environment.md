@@ -258,15 +258,23 @@ review" requirement was in the brief at all.
 
 ## Deferred, Named, Not Forgotten
 
-- **Production images/deployment** — Milestone 19's job. This milestone's
-  Dockerfiles are development-shaped (bind mounts, `next dev`, no
-  multi-stage optimized build, no orchestration platform).
-- **MySQL/PostgreSQL** — the brief is explicit: continue SQLite. The
-  production database choice remains Milestone 19's, per
-  `docs/adr/0004-backend-foundation.md`.
-- **Redis-backed caching** — Milestone 17 (Performance & Scalability)'s
-  job, per the current `docs/ROADMAP.md`. The container exists; the
-  integration doesn't yet.
+- ~~**Production images/deployment**~~ **Backend resolved, Milestone
+  19** — `docker/production/php.Dockerfile`, multi-stage, no bind
+  mounts, no dev dependencies, built and smoke-tested locally. This
+  milestone's own dev-shaped Dockerfiles are deliberately unchanged —
+  still bind-mount-based, still `next dev`, still scoped to developer
+  experience. See
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
+- ~~**MySQL/PostgreSQL** — the brief is explicit: continue SQLite. The
+  production database choice remains Milestone 19's~~ **Resolved,
+  Milestone 19** — PostgreSQL, verified against a real instance (every
+  migration and the full test suite pass with zero code changes). See
+  `docs/adr/0004-backend-foundation.md` and
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
+- ~~**Redis-backed caching**~~ **Resolved, Milestone 17** — evaluated
+  against real measured query timings and deliberately not
+  implemented; the container stays present-but-unused. See
+  `docs/adr/0015-performance-and-scalability.md`.
 - **UID/GID host-permission mapping** — Sail solves a *narrower* version
   of this (a `WWWUSER` build arg matching the host user, so files the
   container creates don't come out root-owned on a Linux host). This

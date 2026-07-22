@@ -279,7 +279,62 @@ client.
 
 ---
 
-## 9. What This Runbook Deliberately Doesn't Cover
+## 9. Disaster Recovery
+
+What to do when something breaks in production — written as a review,
+not a new system to build. Every mechanism named below already exists
+(Railway/Vercel platform features, Laravel's own migration rollback);
+this section is the plan for using them, not new infrastructure.
+
+**A bad deploy (application code).** Both Railway and Vercel keep a
+history of previous deployments and support an instant rollback to any
+of them from their own dashboard — no git revert or rebuild required
+for the fastest path back to a known-good state. Follow up with a real
+`git revert` once the immediate incident is over, so `master` reflects
+what's actually running.
+
+**A bad migration.** Verified as part of this milestone: every
+migration in `database/migrations/` has a real, non-empty `down()`
+method — `php artisan migrate:rollback` is a genuine option, not a
+false promise. Still run it deliberately, one step at a time
+(`--step=1`), and confirm the application still behaves correctly
+after — a working `down()` doesn't guarantee the *data* the `up()`
+migration transformed comes back in a meaningful shape if the
+migration did anything beyond schema changes (this project's
+migrations are schema-only today, so this caveat is currently
+theoretical, not a known gap).
+
+**Database loss or corruption.** Railway's managed Postgres includes
+automated backups on its paid plans — **confirm this is actually
+enabled** for the project's specific plan when provisioning (§2); it
+is not automatic on every tier. Test the actual restore procedure at
+least once after enabling it, in a non-production Railway environment
+— an untested backup is a hypothesis, not a recovery plan.
+
+**Media loss.** R2 (and most S3-compatible providers) support object
+versioning and lifecycle rules. Enabling versioning on the production
+bucket protects against accidental overwrite/delete the way database
+backups protect against schema/data loss — not enabled by default,
+worth turning on during initial bucket setup (§3).
+
+**Lost access to Railway/Vercel/R2 credentials.** Every production
+secret lives only in each platform's own environment variable store
+(§7) — by design, not written anywhere in this repository. That means
+losing access to those platform accounts means losing the secrets
+too. Store a copy of the critical ones (`APP_KEY`, database
+credentials, R2 credentials) in a real password manager as a recovery
+backup, not as a second copy of `.env` anywhere near this repo.
+
+**A full platform outage** (Railway or Vercel down, not this
+project's own fault). Accepted platform risk, not mitigated — a real
+multi-region or multi-provider failover setup is disproportionate
+infrastructure for this project's actual scale and audience. If this
+project's real-world usage ever grows to a point where that risk needs
+mitigating, that's a genuine future milestone, not a gap in this one.
+
+---
+
+## 10. What This Runbook Deliberately Doesn't Cover
 
 - **A CDN in front of R2/Vercel** — Vercel's own edge network already
   serves the frontend; a dedicated CDN layer for media is real future

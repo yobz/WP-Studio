@@ -126,8 +126,11 @@ project's actual deployment story uses.
 
 ## Future Evolution
 
-- **Milestone 15's Docker images as a CI target** once Milestone 19
-  needs to validate an actual production image, not just source code.
+- **CI against the production Docker image** — Milestone 19 built
+  `docker/production/php.Dockerfile` and verified it locally
+  (`docker build`, then smoke-tested inside the built image), but
+  didn't wire that verification into CI itself. A real, still-open
+  future addition, not picked up by that milestone's actual scope.
 - **Playwright E2E in CI** — a real, separate future milestone if this
   project's manual live-verification practice needs to become a
   permanent, automated gate.

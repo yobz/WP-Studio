@@ -1,5 +1,40 @@
 # Devlog
 
+## 2026-07-22 — Milestone 20: Production Release
+
+The last milestone on `docs/ROADMAP.md`, closing v1.0. Deliberately an
+audit-and-polish pass, not a feature milestone — explicit guidance to
+resist adding new capabilities. Full reasoning in
+`docs/adr/0018-production-release.md`.
+
+**Dependency audit, run deliberately for the first time.**
+`composer audit`: 4 medium-severity Guzzle advisories, fix verified
+safe within Laravel's existing version constraint, not applied this
+session — `repo.packagist.org` was unreachable from this environment
+(confirmed host-specific: npm's registry responded fine at the same
+time). `npm audit`: 7 vulnerabilities, 1 fixed (`fast-uri`), 2
+confirmed pinned inside Next.js 15's own bundled dependencies and
+unfixable without a breaking downgrade — the `postcss` one already a
+known, tracked risk since Milestone 1 — 1 dev-tool-only finding
+reviewed and accepted.
+
+**Documentation consistency audit found real staleness in eight
+files.** Five ADRs still described things as deferred to Milestone 19
+after it had actually resolved them. The root `README.md` was four
+milestones out of date — still said "Milestone 15... complete," still
+called PostgreSQL a "MySQL-candidate" after Milestone 19 had already
+decided and verified it. All fixed.
+
+**A new disaster recovery review**, not new infrastructure — reviewing
+existing platform mechanisms (deployment rollback, migration rollback,
+managed backups, object versioning). Verified every migration has a
+real, non-empty `down()` method rather than assuming it.
+
+**A production readiness audit, verified not re-asserted.** Zero raw
+SQL anywhere in the app, zero `dangerouslySetInnerHTML` anywhere in
+the frontend, zero committed `.env` files, ever — each confirmed by
+directly searching the codebase.
+
 ## 2026-07-22 — Milestone 19: Cloud Deployment & Security Hardening
 
 Scoped deliberately: "deployment-ready, not deployed." Real Vercel/

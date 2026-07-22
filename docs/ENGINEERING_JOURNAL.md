@@ -347,11 +347,14 @@ items are added, resolved, or reprioritized; not a chronological log
   endpoints**~~ **Partially resolved, Milestone 14** — AI is real now
   (see above). Analytics is real (Milestone 10.1); Settings is real
   but read-only (Milestone 10.1) — see `docs/ROADMAP.md`.
-- **No production Docker image or deployment target** (found Milestone
-  15, by design — see
+- ~~**No production Docker image or deployment target**~~ **Backend
+  image resolved, Milestone 19** (found Milestone 15, by design — see
   [[0013-docker-development-environment]](adr/0013-docker-development-environment.md)).
-  The Dockerfiles are dev-shaped (bind mounts, `next dev`, no
-  multi-stage build); Milestone 19's job.
+  `docker/production/php.Dockerfile` — multi-stage, built and
+  smoke-tested locally. This milestone's own dev Dockerfiles stay
+  unchanged, deliberately. Actual deployment (a live URL) remains not
+  done — see
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md).
 - **No general host-UID/GID-matching mechanism in the Docker setup**
   (found Milestone 15, by design). Live validation found and fixed two
   specific Windows-bind-mount permission problems with targeted

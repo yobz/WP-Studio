@@ -177,13 +177,12 @@ plausible next to what the other eight (still-mocked) widgets show.
 - `/api/v1/health` — checks the actual database connection (not just
   "the PHP process is alive"), separate from Laravel's own built-in
   `/up` (which stays for infrastructure-level probes).
-- Sentry and OpenTelemetry are **not** integrated — `.env.example` has
-  commented placeholders (`SENTRY_LARAVEL_DSN`,
-  `OTEL_EXPORTER_OTLP_ENDPOINT`) and this ADR is the documented
-  integration point for whichever future milestone adds them. Adding
-  Sentry later is a package install plus config, not a restructuring —
-  `ApiExceptionHandler`'s single `render()` closure is exactly where a
-  `report()` call would go.
+- ~~Sentry and OpenTelemetry are **not** integrated~~ **Sentry
+  resolved, Milestone 18** — `sentry/sentry-laravel`, DSN-optional,
+  wired via `bootstrap/app.php`'s `withExceptions()` closure exactly as
+  predicted here. OpenTelemetry remains a deliberate, documented scope
+  cut — no trace-collection backend exists in this project's
+  deployment story. See `docs/adr/0016-observability.md`.
 
 **Security groundwork**:
 - `config/cors.php` — restricted to `FRONTEND_URLS` (env-configured,
@@ -286,6 +285,7 @@ Deliberately not "full coverage" — the brief's own scope.
 - **Future Analytics milestone**: `sites.monthly_visitors` likely gets
   replaced (or supplemented) by a real events/aggregation schema;
   `AnalyticsController` is already routed and ready to point at it.
-- **Sentry/OpenTelemetry**: env placeholders and the single
+- ~~**Sentry/OpenTelemetry**: env placeholders and the single
   `ApiExceptionHandler::render()` choke point are the documented
-  starting point — see Observability above.
+  starting point~~ — Sentry resolved, Milestone 18; see Observability
+  above.

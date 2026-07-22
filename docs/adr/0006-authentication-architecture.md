@@ -243,15 +243,15 @@ switching without rewriting every controller."
 
 ## Trade-offs
 
-- **Sanctum SPA cookie auth requires a shared registrable domain (or
-  configured subdomains) in production.** Local dev (`localhost:3000`
-  / `:8000`) works via `SANCTUM_STATEFUL_DOMAINS` out of the box. The
-  documented production target (`docs/PROJECT.md`'s Stack table:
-  Vercel + Railway) is two unrelated domains unless custom domains
-  under one root domain are set up before launch. Deliberately **not**
-  solved here — named as Milestone 19 (Cloud Deployment & Security
-  Hardening)'s job, the same pattern as the SQLite→MySQL production
-  decision deferred since Milestone 6.
+- ~~**Sanctum SPA cookie auth requires a shared registrable domain (or
+  configured subdomains) in production.**~~ **Resolved, Milestone
+  19** — with zero code changes. Local dev (`localhost:3000`/`:8000`)
+  already worked via `SANCTUM_STATEFUL_DOMAINS` out of the box; the
+  production fix is a deployment decision (custom subdomains of one
+  registrable domain), not an architecture change — every relevant
+  config here was already env-driven. See
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md` and
+  `docs/DEPLOYMENT.md` §4.
 - **No Next.js edge `middleware.ts`.** The auth boundary is a
   client-side query check in `ProtectedLayout`, not an edge redirect.
   Accepted: Next.js can't meaningfully introspect Laravel's `httpOnly`

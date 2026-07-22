@@ -175,18 +175,17 @@ address in a private or reserved range (`FILTER_FLAG_NO_PRIV_RANGE` /
 `FILTER_FLAG_NO_RES_RANGE`) — checked **before** any request is sent
 (verified in tests via `Http::assertNothingSent()`).
 
-**Named, accepted residual risk: no DNS resolution check.** The
-validator does not resolve a hostname to check where it actually
-points — a hostname that resolves to a private IP, or DNS rebinding
-(the hostname resolves safely at check-time, differently at request-
-time), isn't caught. Accepted deliberately: resolving DNS inside the
-validator would mean either a real network call inside what's meant to
-be a fast, deterministic check, or a network dependency inside this
-milestone's own test suite — in direct tension with "don't depend on
-live network calls in automated tests." Every literal IP address is
-still fully checked. Full hostname-resolution hardening is deferred to
-Milestone 19 (Cloud Deployment & Security Hardening), joining the
-already-deferred cross-domain cookie decision there.
+~~**Named, accepted residual risk: no DNS resolution check.**~~
+**Resolved, Milestone 19** — an injectable `DnsResolver` now resolves
+each hostname and checks every address it points at, using the same
+private/reserved-range filter the literal-IP path already used. The
+network-call-in-tests tension named here was solved with a fake
+resolver bound for the whole test suite (the same pattern
+`Http::fake()` already established), not by skipping the check. DNS
+rebinding (the hostname resolves safely at check-time, differently at
+request-time) remains a further, more advanced hardening step, not
+currently justified by this app's threat model. See
+`docs/adr/0017-cloud-deployment-and-security-hardening.md`.
 
 **Rate limiting.** `connect`/`verify`/`refresh-metadata` all carry a
 new `wordpress-connection` limiter (10/minute, keyed by the

@@ -120,13 +120,16 @@ or feature in this milestone needs it. `config('media.allowed_mimes')`
 is a single array a future milestone extends; the validation, storage,
 and dedup logic are already format-agnostic.
 
-**Virus scanning — reviewed, explicitly deferred.** No scanning
-exists in this environment (no ClamAV or equivalent service
-configured anywhere in this project). Named as deferred infrastructure
-work for Milestone 19 (Cloud Deployment & Security Hardening), the
-same category as process supervision for `queue:work`
-(`docs/adr/0009-background-job-platform.md`) — not silently assumed
-safe.
+**Virus scanning — reviewed, explicitly deferred, twice now.** No
+scanning exists in this environment (no ClamAV or equivalent service
+configured anywhere in this project). **Re-evaluated, Milestone 19:
+still not implemented as code, deliberately** — no real scanning
+service exists to build or test against without live infrastructure
+that milestone's "deployment-ready, not deployed" scope excluded.
+Documented as a concrete recommendation (a ClamAV sidecar, or the
+object-storage provider's own scanning add-on) in
+`docs/DEPLOYMENT.md`, not silently assumed safe. See
+`docs/adr/0017-cloud-deployment-and-security-hardening.md`.
 
 ## Media Schema
 
@@ -264,9 +267,13 @@ bytes).
   image (grid, list, preview, post detail) serves the original
   upload/download at full resolution — no responsive `srcset`, no
   server-generated thumbnail sizes. Acceptable at this milestone's
-  scale (single images, not a high-volume media library yet); a real
-  candidate for Milestone 17 (Performance & Scalability), which the brief
-  itself names as this platform's next consumer.
+  scale (single images, not a high-volume media library yet). **Update,
+  Milestone 17:** named as this platform's next consumer, but not
+  picked up — that milestone's actual measured hot paths were Posts
+  pagination and the WordPress sync N+1
+  (`docs/adr/0015-performance-and-scalability.md`), not media
+  rendering; no evidence made thumbnail generation the higher-value
+  fix at the time. Remains real, open future work.
 
 ## Frontend
 
@@ -320,15 +327,18 @@ milestone has. A real candidate if a future feature needs it.
   'ai_generated'` is already a reserved, unused value in the schema —
   an AI image generation job attaches its output the same way
   `DownloadMediaJob` does today, no schema change.
-- **Milestone 17 (Performance & Scalability):** thumbnail/responsive-image
-  generation (a natural `GenerateThumbnailJob`/`OptimizeImageJob`,
-  named but not built this milestone) and CDN-backed serving are the
-  named next consumers of this platform, per the brief's own
-  direction.
-- **Milestone 19 (Cloud Deployment & Security Hardening):** `MEDIA_DISK=s3` (or R2/
-  Spaces) is the entire migration — no code change, per this ADR's own
-  Decision. Virus scanning is real, deferred infrastructure work for
-  the same milestone.
+- **Thumbnail/responsive-image generation** (a natural
+  `GenerateThumbnailJob`/`OptimizeImageJob`) and CDN-backed serving
+  remain named, real future work — not picked up by Milestone 17
+  (Performance & Scalability), whose actual measured hot paths lay
+  elsewhere; see the Performance section above.
+- ~~**Milestone 19 (Cloud Deployment & Security Hardening):**
+  `MEDIA_DISK=s3` (or R2/Spaces) is the entire migration — no code
+  change, per this ADR's own Decision.~~ **Confirmed, Milestone 19** —
+  the claim held exactly as predicted; Cloudflare R2 chosen, zero code
+  touched, env vars documented in `docs/DEPLOYMENT.md` §3. Virus
+  scanning remains real, deferred work — see that ADR's own Virus
+  Scanning section.
 - **Avatars, Attachments, Reports** (named in the brief as future
   producers) each attach via `mediable_type`/`mediable_id` +
   a new `collection` value — no new table, no new service.

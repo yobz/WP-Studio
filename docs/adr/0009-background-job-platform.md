@@ -271,14 +271,19 @@ non-change, not an oversight.
   consumer of this job pattern — an AI generation request is exactly
   the shape (external API call, unpredictable latency, needs
   retry/backoff) this milestone built the pattern for.
-- **Milestone 18 (Observability):** `QueueHealthChecker`'s real
-  pending/failed counts and `ContentSynced`'s existing domain-event
-  dispatch are both already-real signals a future structured-logging/
-  tracing integration attaches to, not new instrumentation to invent.
-- **Milestone 19 (Cloud Deployment & Security Hardening):** process
-  supervision for `queue:work` (Supervisor or equivalent) is real,
-  named, deferred infrastructure work — nothing in this environment
-  keeps a worker running or restarts it after a crash today.
+- ~~**Milestone 18 (Observability):** `QueueHealthChecker`'s real
+  pending/failed counts... are already-real signals a future
+  structured-logging/tracing integration attaches to~~ **Confirmed,
+  Milestone 18** — exactly as predicted: `HealthController` now calls
+  `QueueHealthChecker` directly, zero new checker code. See
+  `docs/adr/0016-observability.md`.
+- ~~**Milestone 19 (Cloud Deployment & Security Hardening):** process
+  supervision for `queue:work`~~ **Resolved, Milestone 19** — not with
+  a hand-rolled Supervisor config, but by running `queue`/`scheduler`
+  as their own Railway services, each independently restarted by the
+  platform's own per-service process model. See
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md` and
+  `docs/DEPLOYMENT.md` §5.
 - **A future bulk "sync every site in a workspace" action** is the
   concrete trigger for finally using `job_batches` — deferred, not
   because it's hard, but because nothing needs it yet.

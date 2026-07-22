@@ -410,8 +410,24 @@ product under real usage, not just a single-request demo.
 
 ## Release v1.0 — Production Release
 
-- [ ] **20. Production Release** — Final architecture review,
-      production readiness audit, deployment checklist, disaster
-      recovery review, documentation cleanup, dependency audit, and
-      final polish. Resolve or explicitly document every deferred
-      decision from Milestones 1–19 before closing the project.
+- [x] **20. Production Release** — Deliberately an audit-and-polish
+      milestone, not a feature one, per explicit guidance to resist
+      adding new capabilities. Dependency audit: `composer audit`
+      found 4 in-constraint-fixable Guzzle advisories (verified safe,
+      blocked from applying by a `repo.packagist.org` connectivity
+      issue this session); `npm audit` found 7, fixed 1, confirmed 2
+      pinned inside Next.js 15's own bundled dependencies (one already
+      a known, tracked risk since Milestone 1), reviewed and accepted
+      1 dev-tool-only finding. Documentation consistency audit found
+      and fixed real staleness in eight files, including the root
+      `README.md`, four milestones out of date. A new disaster
+      recovery review (`docs/DEPLOYMENT.md` §9) verified every
+      migration has a real rollback path rather than assuming it. A
+      production readiness audit verified — not re-asserted — zero raw
+      SQL, zero `dangerouslySetInnerHTML`, zero committed secrets
+      across the whole codebase. See
+      `docs/adr/0018-production-release.md`.
+
+This closes the planned roadmap. Every remaining deferred decision is
+named, with reasoning, in its own milestone's ADR — see each
+`docs/adr/0*-*.md`'s Deferred Work section.
