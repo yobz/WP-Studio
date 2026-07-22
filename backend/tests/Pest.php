@@ -3,6 +3,7 @@
 use App\Enums\WorkspaceRole;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\WordPress\Security\DnsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -10,7 +11,27 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    // Every test gets a fake DnsResolver by default, resolving to a real
+    // public IP (example.com's own) — UrlSafetyValidator's DNS-resolution
+    // SSRF check would otherwise make a genuine network call on every test
+    // that connects a site with a hostname URL (most of
+    // WordPressConnectionTest), the same class of test-suite network
+    // dependency Http::fake() already exists to avoid. Chained onto this
+    // call (not a standalone beforeEach()) because BeforeEachRepository
+    // keys hooks by exact filename — a bare top-level beforeEach() in this
+    // file only ever fires for tests declared in Pest.php itself, never
+    // for tests/Feature/*.php.
+    ->beforeEach(function () {
+        fakeDnsResolution();
+    })
     ->in('Feature');
+
+function fakeDnsResolution(array $ips = ['93.184.216.34']): void
+{
+    app()->instance(DnsResolver::class, Mockery::mock(DnsResolver::class, [
+        'resolve' => $ips,
+    ]));
+}
 
 function actingAsWorkspaceMember(?Workspace $workspace = null, WorkspaceRole $role = WorkspaceRole::Owner): array
 {

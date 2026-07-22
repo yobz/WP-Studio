@@ -19,7 +19,7 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | Styling           | Tailwind CSS 4, shadcn/ui (Base UI primitives), Lucide React |
 | Backend           | Laravel 12, PHP 8.2 (`backend/`, own README/ADR)  |
 | Auth              | Laravel Sanctum (cookie/session SPA auth, Milestone 8) |
-| Database          | SQLite (local dev, Milestone 6); MySQL/PostgreSQL a production candidate, not yet decided |
+| Database          | SQLite (local dev, Milestone 6); PostgreSQL for production, decided and verified Milestone 19 |
 | Client state      | Zustand, React Context API           |
 | Server state       | TanStack Query (includes auth session state, Milestone 8) |
 | Forms/validation  | React Hook Form, Zod                 |
@@ -1045,6 +1045,63 @@ out-of-scope for this milestone's "lightweight" brief; the frontend's
 existing `ApiError`/`UNAUTHORIZED_EVENT` pattern remains its primary
 error surface. See `docs/adr/0016-observability.md`.
 
+## Cloud Deployment & Security Hardening (Milestone 19)
+
+**Deployment-ready, not deployed — a deliberate scope decision, not a
+limitation discovered afterward.** Real Vercel/Railway accounts, a
+real domain, and real object storage credentials need account access
+and billing decisions this project's automated milestone work doesn't
+have. Everything code/config could cover, this milestone built;
+`docs/DEPLOYMENT.md` is the runbook for the rest.
+
+**PostgreSQL, verified against a real instance, not assumed.** Spun up
+a real Postgres 16 container, ran every migration and the full
+145-test backend suite against it — zero errors, zero code changes.
+Local development stays SQLite; production is Postgres, a decision
+this project left open since Milestone 6 and finally made with
+evidence.
+
+**Object storage: Cloudflare R2, config only.** `docs/adr/0010-media-
+platform.md`'s claim that switching disks needs no code — confirmed by
+reading `config/filesystems.php`'s existing `s3` disk stub, which
+already supports the custom endpoint any S3-compatible provider needs.
+
+**A real DNS-resolution SSRF fix, plus a real Pest bug found building
+its test.** `UrlSafetyValidator` now resolves hostnames and checks
+every address they point at, not just literal IPs — closing a gap
+named since Milestone 9. Testing it surfaced a genuine Pest
+configuration bug (a standalone `beforeEach()` that silently never
+ran outside its own file) that had been letting 44 real DNS lookups
+happen per test suite run, unnoticed, since the DNS check was added.
+See `docs/ENGINEERING_JOURNAL.md`'s 2026-07-22 entry.
+
+**A rate-limiting gap closed.** Only four specific endpoints had
+throttles; every other authenticated route — Sites/Posts/Media,
+Dashboard, GraphQL — had none. Added a 120-req/min global backstop.
+
+**Cross-domain auth: zero code, all configuration.** Sanctum's
+cookie-session cross-domain blocker, named since Milestone 8, needed
+no code change — `config/cors.php`/`sanctum.php`/`session.php` were
+already fully env-driven. The fix is a deployment decision (custom
+subdomains of one registrable domain), documented in
+`docs/DEPLOYMENT.md`.
+
+**A production Docker image, built and smoke-tested, not just
+written.** `docker/production/php.Dockerfile` — multi-stage, no dev
+dependencies, OPcache on, deliberately separate from the dev-shaped
+image `docs/adr/0013-docker-development-environment.md` scoped to
+developer experience. `docker build` succeeds locally; the built
+image's `php -v`/`php -m` confirm OPcache and both Postgres/SQLite
+drivers load correctly.
+
+**Process supervision and virus scanning: real decisions, not silent
+gaps.** `queue:work`/`schedule:work` process supervision is Railway's
+own per-service model, not a hand-rolled Supervisor config. Virus
+scanning on media uploads is documented as a concrete recommendation
+(a ClamAV sidecar or the storage provider's own scanning add-on), not
+built as speculative code with no real service to test it against.
+See `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -1090,12 +1147,12 @@ error surface. See `docs/adr/0016-observability.md`.
   `docs/adr/0006-authentication-architecture.md`'s Trade-offs and Future
   IAM Roadmap sections. Login is against `DemoDataSeeder`'s seeded user
   only until a future onboarding milestone adds real registration.
-- Sanctum's cookie-session auth requires the frontend and backend to
-  share a registrable domain (or configured subdomains) in production —
-  works locally out of the box, but the documented Vercel + Railway
-  target is two unrelated domains today. Deliberately deferred to
-  Milestone 19 (Cloud Deployment & Security Hardening), the same
-  pattern as the SQLite→MySQL production decision.
+- ~~Sanctum's cookie-session auth requires the frontend and backend to
+  share a registrable domain (or configured subdomains) in
+  production~~ **Resolved, Milestone 19** — zero code changes; every
+  relevant config was already env-driven. The fix is a deployment
+  decision (custom subdomains of one registrable domain), documented
+  in `docs/DEPLOYMENT.md` §4.
 - No repository layer, no real analytics *events* schema (only daily
   snapshots), no dedicated workspace-deletion flow, SQLite (not a
   server database) in local development — all deliberate Milestone 6–7
@@ -1110,12 +1167,14 @@ error surface. See `docs/adr/0016-observability.md`.
   either through its public REST API without a companion plugin. See
   `docs/adr/0007-wordpress-integration-architecture.md`'s "Version
   Detection" section.
-- The SSRF guard on WordPress connection URLs checks literal IP
+- ~~The SSRF guard on WordPress connection URLs checks literal IP
   addresses against private/reserved ranges but doesn't resolve
-  hostnames to check where they actually point (Milestone 9, by
-  design) — a real, named limitation, deferred to Milestone 19 to keep
-  the check network-free and deterministic in tests. See the ADR's
-  Security section.
+  hostnames to check where they actually point~~ **Resolved, Milestone
+  19** — a new `DnsResolver` resolves hostnames and checks every
+  address they point at too. Full DNS-rebinding (time-of-check/
+  time-of-use) protection remains a further, more advanced hardening
+  step, not currently justified by this app's threat model. See
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
 - ~~No Content Management, Publishing, or Background Jobs yet~~
   **Partially resolved, Milestone 10** — content *synchronization*
   (reading WordPress posts into WP Studio) is real now; *Publishing*
@@ -1155,10 +1214,11 @@ error surface. See `docs/adr/0016-observability.md`.
   dedicated activity-log table (Milestone 10.1, by design) — no such
   table exists; the feed is derived live from existing `Post`/`Site`
   timestamps. Fine at today's real usage.
-- No process supervision keeps `queue:work` running in any environment
-  today (Milestone 11, by design) — a real deployment needs Supervisor
-  or equivalent; deferred to Milestone 19 (Cloud Deployment & Security
-  Hardening).
+- ~~No process supervision keeps `queue:work` running in any
+  environment today~~ **Resolved, Milestone 19** — not a hand-rolled
+  Supervisor config, but `queue`/`scheduler` running as their own
+  Railway services, restarted by the platform's own per-service
+  process model. See `docs/DEPLOYMENT.md` §5.
 - `RefreshSiteMetadataJob` is not wired to the existing manual
   "Refresh Metadata" button, which stays synchronous by design
   (Milestone 11) — that action is fast/bounded enough that immediate
@@ -1174,10 +1234,11 @@ error surface. See `docs/adr/0016-observability.md`.
   at full resolution. Named as Milestone 17 (Performance & Scalability)'s
   natural starting point; see `docs/adr/0010-media-platform.md`.
 - No virus scanning on uploaded/downloaded media (Milestone 12, by
-  design) — no scanning service exists in any environment this project
-  runs in today. Explicitly deferred to Milestone 19 (Cloud Deployment
-  & Security Hardening), the same category as `queue:work` process
-  supervision.
+  design) — **evaluated again, Milestone 19, still not built as code**:
+  no real scanning service exists to test against without live
+  infrastructure that milestone's "deployment-ready, not deployed"
+  scope excluded. Documented as a concrete recommendation in
+  `docs/DEPLOYMENT.md` instead of speculative, unverifiable code.
 - The Media Platform's MIME allow-list is images only — `jpg`, `jpeg`,
   `png`, `gif`, `webp` (Milestone 12, by design; `svg` deliberately
   excluded as a stored-XSS vector). Document/report types the brief
@@ -1204,11 +1265,14 @@ error surface. See `docs/adr/0016-observability.md`.
   rejected as GraphQL types). A real future candidate only if a
   genuine variable-shape aggregation need emerges for one of them the
   way it did for the Dashboard.
-- No dedicated rate limiter on `/api/v1/graphql` (Milestone 13, by
+- No *dedicated* rate limiter on `/api/v1/graphql` (Milestone 13, by
   design) — the endpoint is read-only and re-uses existing services
-  with no new expensive aggregation, so it inherits no throttle the
-  way `wordpress-connection`/`media-upload` have. Worth revisiting if
-  the schema ever grows to include anything expensive.
+  with no new expensive aggregation, so a bespoke, tighter limit the
+  way `wordpress-connection`/`media-upload` have wasn't built. It does
+  now inherit the global 120-req/min backstop every API route gets
+  (Milestone 19 — `docs/adr/0017-cloud-deployment-and-security-
+  hardening.md`). Worth a dedicated, tighter limit if the schema ever
+  grows to include anything expensive.
 - No AI generation-history UI, no site/post-targeted generation, and no
   streaming responses (Milestone 14, by design) — `AiAssistantPreview` is
   a single prompt box with no memory of past generations; `ai_jobs` rows
@@ -1227,10 +1291,15 @@ error surface. See `docs/adr/0016-observability.md`.
   returned a live `404` ("no longer available to new users") against the key
   used during this milestone's verification. Worth re-checking model
   availability if this default is ever revisited.
-- No production Docker image, orchestration platform, or deployment
-  target (Milestone 15, by design) — the Dockerfiles are dev-shaped
-  (bind mounts, `next dev`, no multi-stage optimized build). Milestone
-  19's job, per `docs/adr/0013-docker-development-environment.md`.
+- ~~No production Docker image, orchestration platform, or deployment
+  target~~ **Backend image resolved, Milestone 19** —
+  `docker/production/php.Dockerfile`, multi-stage, built and
+  smoke-tested locally. The frontend needs no equivalent — Vercel
+  builds Next.js natively, no Dockerfile involved. **Actual
+  deployment (an orchestration platform, a live URL) remains not
+  done, deliberately** — see `docs/DEPLOYMENT.md` and
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md`'s Scope
+  section.
 - No general host-UID/GID-matching mechanism in the Docker setup
   (Milestone 15, by design) — the targeted `chmod`/`chown` fixes live
   validation required (`storage`/`bootstrap/cache` at build time,
@@ -1289,10 +1358,34 @@ error surface. See `docs/adr/0016-observability.md`.
 - Structured JSON logging is opt-in via `LOG_JSON`, not the default
   (Milestone 18, by design) — local development stays human-readable;
   a real deployment would set it `true`.
+- **Not actually deployed anywhere** (Milestone 19, by design) — the
+  codebase and `docs/DEPLOYMENT.md` are ready; provisioning real
+  Vercel/Railway accounts, a domain, and object storage credentials is
+  the project owner's own step. See
+  `docs/adr/0017-cloud-deployment-and-security-hardening.md`'s Scope
+  section.
+- No `Content-Security-Policy` header (Milestone 19, by design) — a
+  real risk of breaking the Next.js app's script/style loading without
+  page-by-page verification this milestone didn't budget for. HSTS
+  (unconditionally safe) was added instead; CSP is named future work.
+- DNS-rebinding (time-of-check/time-of-use) protection beyond the
+  resolve-and-check `UrlSafetyValidator` now does isn't implemented
+  (Milestone 19, by design) — pinning the resolved IP through to the
+  actual HTTP client connection is real further hardening, not
+  currently justified by this app's threat model (a trusted user
+  connecting their own WordPress site, not adversarial multi-tenant
+  input at scale).
+- No virus scanning on media uploads (Milestone 19, by design,
+  re-evaluated from Milestone 12) — documented as a concrete
+  recommendation in `docs/DEPLOYMENT.md`, not built as code with no
+  real scanning service to verify it against.
 
 ## Status
 
-Milestone 18 (Observability) complete. See `ROADMAP.md` for
-the full milestone list, `DEVLOG.md` for a running log of completed
-work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
-decisions and the reasoning behind them.
+Milestone 19 (Cloud Deployment & Security Hardening) complete —
+deployment-ready, not deployed (a deliberate scope decision; see
+`docs/adr/0017-cloud-deployment-and-security-hardening.md`). See
+`ROADMAP.md` for the full milestone list, `DEVLOG.md` for a running
+log of completed work, `docs/DEPLOYMENT.md` for the actual deploy
+runbook, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for
+architectural decisions and the reasoning behind them.

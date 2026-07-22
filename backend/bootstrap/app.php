@@ -23,6 +23,11 @@ return Application::configure(basePath: dirname(__DIR__))
             AssignRequestId::class,
         ]);
 
+        // A generous global backstop (see AppServiceProvider's 'api'
+        // limiter) — every API request gets one, not just the four
+        // specific endpoints with their own tighter limits.
+        $middleware->throttleApi();
+
         $middleware->api(append: [
             LogApiRequests::class,
         ]);

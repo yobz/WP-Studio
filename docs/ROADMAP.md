@@ -382,12 +382,31 @@ product under real usage, not just a single-request demo.
       story; frontend error monitoring stays out-of-scope for a
       "lightweight" brief). See
       `docs/adr/0016-observability.md`.
-- [ ] **19. Cloud Deployment & Security Hardening** — Deploy to Vercel
-      and Railway (or alternatives selected during the milestone
-      review), migrate from SQLite to MySQL/PostgreSQL if appropriate
-      for production, configure object storage (S3/R2) for media,
-      review environment configuration, rate limiting, secrets
-      management, and perform a security audit of the application.
+- [x] **19. Cloud Deployment & Security Hardening** — Deliberately
+      scoped to "deployment-ready, not deployed": real account
+      provisioning (Vercel, Railway, a domain, object storage) needs
+      access this project's automated work doesn't have, so this
+      milestone built everything code/config could cover and wrote
+      `docs/DEPLOYMENT.md` as the runbook for the rest. PostgreSQL
+      chosen and verified against a real Postgres 16 instance — every
+      migration and the full 145-test suite pass with zero code
+      changes. Object storage (Cloudflare R2) confirmed config-only, no
+      code touched. A real DNS-resolution SSRF fix (`UrlSafetyValidator`
+      now resolves hostnames, not just literal IPs) — building its test
+      surfaced and fixed a genuine Pest configuration bug that had 44
+      real DNS lookups happening per test run, unnoticed
+      (`docs/ENGINEERING_JOURNAL.md`). A global 120-req/min API rate
+      limit closed a real gap (only 4 of dozens of endpoints were
+      throttled). An HSTS header added; a full CSP deliberately
+      deferred (real risk of breaking the app without page-by-page
+      verification). Sanctum's cross-domain cookie blocker resolved
+      with zero code — a documented custom-subdomain deployment
+      strategy. A production Docker image
+      (`docker/production/php.Dockerfile`) built and smoke-tested
+      locally. Process supervision and virus scanning: real, documented
+      decisions (Railway's own service model; a concrete runbook
+      recommendation), not silent gaps or speculative code. See
+      `docs/adr/0017-cloud-deployment-and-security-hardening.md`.
 
 ## Release v1.0 — Production Release
 

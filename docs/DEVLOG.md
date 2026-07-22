@@ -1,5 +1,52 @@
 # Devlog
 
+## 2026-07-22 — Milestone 19: Cloud Deployment & Security Hardening
+
+Scoped deliberately: "deployment-ready, not deployed." Real Vercel/
+Railway accounts, a domain, and object storage credentials need access
+this project's automated work doesn't have — so this milestone built
+everything code and config could cover, and wrote `docs/DEPLOYMENT.md`
+as the runbook for what's left. Full reasoning in
+`docs/adr/0017-cloud-deployment-and-security-hardening.md`.
+
+**PostgreSQL, verified against a real instance.** Spun up a real
+Postgres 16 container, ran every migration and the full 145-test
+backend suite against it. Zero errors, zero code changes — the
+`pgsql` connection in `config/database.php` had been sitting there,
+correct and unused, since scaffolding.
+
+**A real DNS-resolution SSRF fix — and a real Pest bug found while
+testing it.** `UrlSafetyValidator` now resolves hostnames and checks
+every address they point at, not just literal IPs. Building a fake
+`DnsResolver` for the test suite surfaced a genuine bug: a standalone
+`beforeEach()` in `tests/Pest.php` had been silently never firing
+outside its own file, since before this milestone — 44 real DNS
+lookups were happening per full suite run, unnoticed. Fixed by
+chaining `.beforeEach()` onto the existing `pest()->extend()->in()`
+call instead. Full investigation in `docs/ENGINEERING_JOURNAL.md`.
+
+**A rate-limiting gap closed.** Only 4 of dozens of endpoints had a
+throttle. Added a global 120-req/min backstop across the whole API,
+stacked under the existing tighter, endpoint-specific limits.
+
+**Cross-domain auth, resolved with zero code.** Sanctum's cookie-
+session cross-domain blocker, named since Milestone 8: every relevant
+config was already env-driven. The actual fix is a deployment decision
+— custom subdomains of one registrable domain — documented, not coded.
+
+**A production Docker image, built and smoke-tested, not just
+written.** `docker/production/php.Dockerfile` — multi-stage, no dev
+dependencies, OPcache on. `docker build` succeeds locally; the built
+image's `php -v` confirms OPcache active and both Postgres/SQLite
+drivers loaded.
+
+**Process supervision and virus scanning: real decisions.** Process
+supervision is Railway's own per-service model, not a hand-rolled
+Supervisor config. Virus scanning is a documented runbook
+recommendation, not speculative code with no real service to verify
+it against — the same discipline Milestone 17 applied to declining
+premature Redis caching.
+
 ## 2026-07-22 — Milestone 18: Observability
 
 `docs/adr/0004-backend-foundation.md` named this milestone's shape back

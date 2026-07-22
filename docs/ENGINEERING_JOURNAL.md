@@ -97,16 +97,20 @@ items are added, resolved, or reprioritized; not a chronological log
   export, grace period) before this is ever exposed through an API
   endpoint. No such endpoint exists yet, so not urgent — but flagged
   before one gets added casually.
-- **`UrlSafetyValidator`'s SSRF guard doesn't resolve hostnames**
-  (found Milestone 9, by design — see
+- ~~**`UrlSafetyValidator`'s SSRF guard doesn't resolve hostnames**~~
+  **Resolved, Milestone 19** — a new injectable `DnsResolver` resolves
+  a hostname and checks every address it currently points at against
+  the same private/reserved-range filter the literal-IP path already
+  used (found Milestone 9, by design — see
   [[0007-wordpress-integration-architecture]](adr/0007-wordpress-integration-architecture.md)'s
-  Security section). Every literal IP address is checked against
-  private/reserved ranges; a hostname that *resolves* to one (or DNS
-  rebinding — safe at check-time, different at request-time) isn't
-  caught. Deliberate: resolving DNS inside the validator would add a
-  real network call to what's meant to be a fast, deterministic,
-  test-free check. Deferred to Milestone 19 alongside the cross-domain
-  cookie decision, not ignored.
+  Security section). Scoped to exactly the named gap, not full
+  DNS-rebinding (time-of-check/time-of-use) protection — pinning the
+  resolved IP through to the actual HTTP client connection is real
+  further hardening, named as future work, not currently justified by
+  this app's threat model. Building the fake resolver needed for
+  testing it surfaced a real, unrelated Pest configuration bug — see
+  this file's 2026-07-22 dated entry. See
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md).
 - **`wordpress_version`/`php_version` are always `null`** (found
   Milestone 9, by design). Stock WordPress doesn't expose either via
   its public REST API without a companion plugin — see the ADR's
@@ -165,13 +169,13 @@ items are added, resolved, or reprioritized; not a chronological log
   category of deferred product decision as Registration (Milestone 8)
   and the "AI Jobs" table (Milestone 7). Build the real editable
   feature once that decision is made, not before.
-- **No process supervision for `queue:work`** (found Milestone 11, by
-  design). Nothing in this environment keeps a worker process running
-  or restarts it after a crash — a real deployment needs Supervisor
-  (or an equivalent) managing `queue:work`, which is real
-  infrastructure work, not application code. Deferred to Milestone 19
-  (Cloud Deployment & Security Hardening), the same pattern as every
-  other deployment-shaped decision already deferred there.
+- ~~**No process supervision for `queue:work`**~~ **Resolved,
+  Milestone 19** — not with a hand-rolled Supervisor config inside the
+  container, but by running `queue`/`scheduler` as their own Railway
+  services (Railway's own per-service process model restarts a crashed
+  process, the identical real guarantee). See
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md)
+  and `docs/DEPLOYMENT.md` §5.
 - **`RefreshSiteMetadataJob` is not wired to the existing manual
   "Refresh Metadata" button** (found Milestone 11, by design). The
   button stays synchronous — a single, fast, bounded WordPress
@@ -203,9 +207,14 @@ items are added, resolved, or reprioritized; not a chronological log
   `docs/adr/0010-media-platform.md`.
 - **No virus scanning on uploaded/downloaded media** (found Milestone
   12, reviewed per the brief's own instruction, explicitly deferred).
-  No scanning service exists in any environment this project runs in
-  today. Deferred to Milestone 19 (Cloud Deployment & Security
-  Hardening), the same category as `queue:work` process supervision.
+  **Evaluated again, Milestone 19 — still not implemented as code**,
+  deliberately: no real scanning service exists to build or test
+  against without live infrastructure that milestone's
+  "deployment-ready, not deployed" scope excluded. Documented as a
+  concrete recommendation (a ClamAV sidecar, or the object-storage
+  provider's own scanning add-on) in `docs/DEPLOYMENT.md` rather than
+  speculative, unverifiable code. See
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md).
 - **Media Platform MIME allow-list is images only** (found Milestone
   12, by design). `config('media.allowed_mimes')` covers `jpg`,
   `jpeg`, `png`, `gif`, `webp` — `svg` deliberately excluded (a real
@@ -259,16 +268,19 @@ items are added, resolved, or reprioritized; not a chronological log
 - **Local development runs on SQLite, not a server database** (found
   Milestone 6, by design — see the ADR's Trade-offs). Fine for this
   milestone's architecture-only scope; a real deployment target should
-  make (and document) a deliberate MySQL/PostgreSQL choice before
-  Milestone 15 (Production Release), not inherit SQLite by default.
-  **Update, Milestone 7:** confirmed this choice has a real,
-  non-hypothetical cost — SQLite's lack of foreign-key
-  auto-indexing directly caused the two missing-index findings this
-  milestone's self-review caught (see
-  [[0005-domain-model]](adr/0005-domain-model.md)). Worth re-auditing
-  every migration's indexes specifically when a production database
-  choice is finally made, in case MySQL/Postgres-specific behavior cuts
-  the other way on something else.
+  make (and document) a deliberate MySQL/PostgreSQL choice, not
+  inherit SQLite by default. **Update, Milestone 7:** confirmed this
+  choice has a real, non-hypothetical cost — SQLite's lack of
+  foreign-key auto-indexing directly caused the two missing-index
+  findings this milestone's self-review caught (see
+  [[0005-domain-model]](adr/0005-domain-model.md)). **Resolved,
+  Milestone 19:** PostgreSQL chosen, and — unlike the index-auditing
+  worry above predicted — verified against a real Postgres 16
+  container with zero code changes and zero test failures across the
+  full 145-test suite; the index gaps SQLite's own behavior surfaced
+  back in Milestone 7 had already been fixed by the time this
+  verification ran. Local development stays SQLite, deliberately — see
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md).
 
 ### Deferred Priority
 
@@ -311,13 +323,15 @@ items are added, resolved, or reprioritized; not a chronological log
   reasoning [[0005-domain-model]](adr/0005-domain-model.md) already
   applied to deferring `WorkspaceService`. Login is against
   `DemoDataSeeder`'s seeded user until a future onboarding milestone.
-- **Sanctum's cookie-session auth needs a shared registrable domain in
-  production** (found Milestone 8, by design). Works locally
-  (`localhost:3000`/`:8000`) out of the box; the documented Vercel +
-  Railway deployment target is two unrelated domains today. Deferred to
-  Milestone 19 (Cloud Deployment & Security Hardening) — the same
-  pattern as the SQLite→MySQL production decision deferred since
-  Milestone 6.
+- ~~**Sanctum's cookie-session auth needs a shared registrable domain
+  in production**~~ **Resolved, Milestone 19** — with zero code
+  changes. `config/cors.php`/`config/sanctum.php`/`config/session.php`
+  were already fully env-driven; the actual fix is a deployment
+  decision (custom subdomains of one registrable domain, e.g.
+  `app.yourdomain.com`/`api.yourdomain.com` — subdomains of the same
+  registrable domain count as same-site for `SameSite` cookie
+  purposes), documented in `docs/DEPLOYMENT.md` §4. See
+  [[0017-cloud-deployment-and-security-hardening]](adr/0017-cloud-deployment-and-security-hardening.md).
 - **No repository layer in the backend** (by design, Milestones 6–7 —
   nothing to abstract yet; revisit only if a real second data source
   or complex query-composition need appears).
@@ -1522,6 +1536,91 @@ to real, shipped, verified work.
   introducing that tool as a required automated check — ensuring a new
   quality gate started in a passing state rather than immediately
   generating noise.
+
+---
+
+## 2026-07-22 — A `beforeEach()` that silently never ran, found while building a DNS-SSRF test
+
+**Problem.** Milestone 19's DNS-resolution SSRF fix
+(`docs/adr/0017-cloud-deployment-and-security-hardening.md`) needed a
+fake `DnsResolver` bound for the whole test suite, the same reason
+`Http::fake()` is used everywhere — otherwise every test connecting a
+site via a hostname would make a genuine DNS lookup. Added a
+standalone `beforeEach(fn () => fakeDnsResolution())` at the top level
+of `tests/Pest.php`. The new dedicated SSRF test passed reliably. The
+*existing* test suite did not: `php artisan test` intermittently failed
+on unrelated tests (`ContentSyncTest`, different tests on different
+runs) with `UrlSafetyValidator`'s own "resolves to a private or
+reserved network address" error — for hostnames the test never
+supplied, generated by `Faker::domainName()`.
+
+**First hypothesis (wrong).** Assumed Laravel's `RefreshDatabase` +
+in-memory SQLite optimization was reusing the same Application
+container across tests, letting one test's container binding leak into
+the next. Read `Illuminate\Foundation\Testing\TestCase::setUp()`
+directly — it calls `createApplication()` fresh for every test,
+unconditionally. Container bindings can't be leaking across tests this
+way; the premise was wrong.
+
+**Investigation.** Instrumented both the real `DnsResolver::resolve()`
+and the test helper `fakeDnsResolution()` with debug logging
+(container object ID, whether `queue.worker` was bound) and ran the
+suite with a clean log each time. The evidence was unambiguous: the
+**real** resolver was being called — 44 times across a full suite run,
+each for a genuine Faker-generated hostname like `hane.biz` or
+`tillman.com` — and **zero** `BINDING_FAKE_DNS_RESOLVER` log lines
+appeared anywhere. The global `beforeEach()` wasn't leaking state
+between tests; it was never running at all, for any test, anywhere.
+
+Read Pest's own source rather than guess further.
+`Pest\PendingCalls\BeforeEachCall::__destruct()` registers the hook via
+`$this->testSuite->beforeEach->set($this->filename, ...)`, where
+`$filename = Backtrace::file()` — the file `beforeEach()` was physically
+called from (`tests/Pest.php`). `Pest\Repositories\
+BeforeEachRepository::get(string $filename)` looks up hooks by
+**exact filename**, no directory-based cascading. A bare top-level
+`beforeEach()` declared in `Pest.php` only ever fires for tests
+declared in `Pest.php` itself — which has none. Chaining `.in('Feature')`
+onto it (the fix's first attempt) didn't help either: `.in()` only
+exists on `Pest\PendingCalls\UsesCall` (the object `pest()->extend(...)`
+returns), not on `BeforeEachCall` — calling it there silently falls
+through `__call()`'s fallback branch instead of scoping anything.
+
+**Decision.** `UsesCall` has its own `beforeEach()` method, designed
+specifically to combine with the same object's `.in()` targeting.
+Moved the hook to chain directly onto the existing
+`pest()->extend(TestCase::class)->use(RefreshDatabase::class)` call,
+before `.in('Feature')`:
+
+```php
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
+    ->beforeEach(fn () => fakeDnsResolution())
+    ->in('Feature');
+```
+
+**Verification.** Re-ran with the same debug instrumentation: 10
+`BINDING_FAKE_DNS_RESOLVER` calls for a 10-test file (one per test, as
+expected), 0 real `DnsResolver` calls. Removed the debug logging, ran
+the full 146-test suite five times consecutively — consistent, fast
+(≈10s, down from a real, measured 20–35s when random DNS lookups were
+in the mix), zero failures.
+
+**Lessons learned.** A standalone `beforeEach()`/`afterEach()` at the
+top level of `Pest.php` is not the global hook it visually resembles —
+it silently scopes to nothing outside that file. The correct pattern
+for a suite-wide hook is chaining `.beforeEach()` onto the same
+`uses()`/`pest()->extend()` call that already does the real directory
+targeting via `.in()`. The deeper lesson generalizes past this one API:
+a test that passes in isolation but fails intermittently in the full
+suite is a real signal, not noise to retry past — and "state leaking
+between tests" and "a hook silently never registering" produce
+identical *symptoms* (a value that should be mocked isn't), so the
+first hypothesis (container reuse) needed direct evidence, not just
+plausibility, before being ruled out. Reading the actual framework/
+library source (`TestCase::setUp()`, then `BeforeEachCall`/
+`BeforeEachRepository`) settled it faster than continued speculation
+would have.
 
 ---
 

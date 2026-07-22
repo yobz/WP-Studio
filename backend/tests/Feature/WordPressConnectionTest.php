@@ -145,6 +145,26 @@ it('rejects a connection attempt to a private network address without making any
     expect(Site::query()->count())->toBe(0);
 });
 
+it('rejects a connection attempt to a hostname that resolves to a private network address', function () {
+    actingAsWorkspaceMember();
+    Http::fake();
+    fakeDnsResolution(['10.0.0.5']);
+
+    $response = $this->postJson('/api/v1/sites', [
+        'name' => 'Suspicious Site',
+        'url' => 'https://internal-looking-but-not.example',
+        'wp_username' => 'admin',
+        'application_password' => 'abcd efgh ijkl mnop qrst uvwx',
+    ]);
+
+    $response->assertStatus(503)->assertJson([
+        'success' => false,
+        'error' => ['code' => 'WORDPRESS_UNREACHABLE'],
+    ]);
+    Http::assertNothingSent();
+    expect(Site::query()->count())->toBe(0);
+});
+
 it('rejects a connection attempt to localhost', function () {
     actingAsWorkspaceMember();
     Http::fake();

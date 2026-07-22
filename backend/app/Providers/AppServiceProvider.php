@@ -32,6 +32,14 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // A generous backstop applied to every API request (see
+        // bootstrap/app.php's `throttle:api`) — the four limiters below
+        // stay in place as tighter, endpoint-specific limits stacked on
+        // top of this one, not replaced by it.
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
+        });
+
         RateLimiter::for('login', function (Request $request) {
             $key = Str::lower((string) $request->input('email')).'|'.$request->ip();
 
