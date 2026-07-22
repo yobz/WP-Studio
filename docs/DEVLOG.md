@@ -1,5 +1,48 @@
 # Devlog
 
+## 2026-07-22 — Milestone 18: Observability
+
+`docs/adr/0004-backend-foundation.md` named this milestone's shape back
+in Milestone 4 — this was composition, not new infrastructure. Full
+reasoning in `docs/adr/0016-observability.md`.
+
+**Structured logging, opt-in.** A Monolog channel tap
+(`App\Logging\JsonFormatterTap`) swaps in a JSON formatter, gated by a
+new `LOG_JSON` env var (`false` by default). Verified live:
+`LOG_JSON=true` produces one valid JSON object per line, including the
+`request_id` context `AssignRequestId` has shared since Milestone 4;
+unset, output is unchanged from every prior milestone.
+
+**`/api/v1/health` checks the queue now too.** Zero new checker code —
+`QueueHealthChecker` already existed for the `SystemHealth` dashboard
+widget; `HealthController` now calls it alongside the existing database
+check, degrading to a 503 if either fails. Live verification against
+the real dev database caught 4 genuine, pre-existing failed jobs (a
+week old, unrelated to this milestone) — the check working correctly
+on real data.
+
+**Sentry, wired for real, DSN-optional.** `sentry/sentry-laravel`
+(the official SDK) via `Sentry\Laravel\Integration::handles($exceptions)`
+in `bootstrap/app.php`'s existing `withExceptions()` closure — exactly
+the choke point the Milestone 4 ADR predicted. No custom filtering
+needed: Laravel's own `Handler::$internalDontReport` already excludes
+every exception type `ApiExceptionHandler` turns into a clean 4xx
+response, so Sentry only ever sees genuinely unexpected 500s. No DSN
+is configured in this repo — structurally verified (144/144 tests, a
+live request with the integration active), honestly documented as
+needing a real DSN for live error-arrival verification, the same
+pattern Milestone 14 used for AI provider keys.
+
+**One structured line per request.** A new `LogApiRequests` middleware
+logs method/path/status/duration, correlated by the same shared
+`request_id` — real request-level visibility without a trace collector.
+
+**OpenTelemetry and frontend Sentry: not implemented, deliberately.**
+No trace-collection backend exists anywhere this app runs — OTel spans
+with nowhere to go would be observability theater. Frontend error
+monitoring stays out of this "lightweight" brief's scope. Both named
+as real future work, not silent gaps.
+
 ## 2026-07-20 — Milestone 17: Performance & Scalability
 
 Two ADRs (`0005-domain-model.md`, `0008-content-synchronization.md`)

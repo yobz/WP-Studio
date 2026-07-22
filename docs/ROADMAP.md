@@ -360,10 +360,28 @@ product under real usage, not just a single-request demo.
       and **not implemented** — the data doesn't justify it; stays
       present-but-unused in Docker Compose per Milestone 15. See
       `docs/adr/0015-performance-and-scalability.md`.
-- [ ] **18. Observability** — Implement structured logging, health
-      checks, Sentry/OpenTelemetry integration, request tracing, and
-      operational metrics using the integration points established in
-      earlier milestones.
+- [x] **18. Observability** — Composed already-built integration points
+      (`docs/adr/0004-backend-foundation.md`'s `AssignRequestId`/
+      `ApiExceptionHandler`, Milestone 11's `DatabaseHealthChecker`/
+      `QueueHealthChecker`) into real observability, deliberately kept
+      proportional. Structured logging: an opt-in (`LOG_JSON`) Monolog
+      JSON formatter tap, verified live to produce genuine single-line
+      JSON. `/api/v1/health` now checks the queue as well as the
+      database (zero new checker code — pure composition), correctly
+      caught 4 real stale failed jobs during live verification.
+      `sentry/sentry-laravel` wired via `bootstrap/app.php`'s existing
+      `withExceptions()` closure, DSN-optional (safe no-op without one,
+      matching Milestone 14's provider-key pattern) — Laravel's own
+      `$internalDontReport` list already excludes every 4xx case
+      `ApiExceptionHandler` handles, so only genuine 500s reach Sentry
+      with zero custom filtering code. A new `LogApiRequests` middleware
+      adds one structured line per API request, correlated by the
+      already-shared `request_id`. OpenTelemetry and frontend Sentry
+      explicitly **not** implemented — named, deliberate scope cuts
+      (no trace-collection backend exists in this project's deployment
+      story; frontend error monitoring stays out-of-scope for a
+      "lightweight" brief). See
+      `docs/adr/0016-observability.md`.
 - [ ] **19. Cloud Deployment & Security Hardening** — Deploy to Vercel
       and Railway (or alternatives selected during the milestone
       review), migrate from SQLite to MySQL/PostgreSQL if appropriate

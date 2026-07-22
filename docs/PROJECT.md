@@ -31,6 +31,7 @@ engineering across a Next.js/React frontend and a Laravel/MySQL backend.
 | Local development | Docker Compose (`backend`, `queue`, `scheduler`, `caddy`, `frontend`, optional `redis`) — one-command `docker compose up`, Milestone 15; bare-metal setup still supported |
 | Deployment         | Vercel (frontend), Railway (backend) |
 | CI/CD             | GitHub Actions — lint/typecheck/test/build on every PR and push to `master`, Milestone 16 |
+| Observability      | Sentry (`sentry/sentry-laravel`, DSN-optional, backend-only), opt-in structured JSON logging, dependency-aware `/api/v1/health`, Milestone 18 |
 
 Planned later: cloud deployment hardening.
 
@@ -331,13 +332,15 @@ mock fixtures. No repository layer (see the ADR's reasoning — nothing
 to abstract yet); one DTO (`DashboardSummaryData`) for the one
 endpoint with real aggregation logic.
 
-**Observability and security groundwork, not yet wired to anything
-external.** `AssignRequestId` middleware tags every request/response/log
-line with a correlation ID; `SecureHeaders` middleware sets baseline
-response headers; `config/cors.php` restricts cross-origin requests to
-the frontend's own origin (not the framework's wildcard default).
-Sentry/OpenTelemetry are documented integration points
-(`.env.example` placeholders), not implemented.
+**Observability and security groundwork.** `AssignRequestId` middleware
+tags every request/response/log line with a correlation ID;
+`SecureHeaders` middleware sets baseline response headers;
+`config/cors.php` restricts cross-origin requests to the frontend's own
+origin (not the framework's wildcard default). ~~Sentry/OpenTelemetry
+are documented integration points, not implemented~~ **Sentry wired,
+Milestone 18** (DSN-optional — see below); OpenTelemetry remains a
+deliberate, documented scope cut, not a gap. See
+`docs/adr/0016-observability.md`.
 
 **Frontend integration — the mock-to-real pattern.** `src/lib/api-client.ts`
 is the one place that calls the real API and unwraps its envelope.
@@ -982,6 +985,66 @@ worth the saving. This is the decision, not a placeholder for one —
 Redis stays present-but-unused; revisit only if real future usage data
 shows a specific, repeated, expensive read.
 
+## Observability (Milestone 18)
+
+**Composition, not new infrastructure.** `docs/adr/0004-backend-
+foundation.md` named this milestone's shape back in Milestone 4:
+`AssignRequestId` (request-ID generation, log-context sharing),
+`ApiExceptionHandler` (one centralized error-render path), and
+commented `.env.example` placeholders for `SENTRY_LARAVEL_DSN`/
+`OTEL_EXPORTER_OTLP_ENDPOINT` were all built as groundwork. Milestone
+11 separately built `DatabaseHealthChecker`/`QueueHealthChecker` for
+the dashboard's `SystemHealth` widget. This milestone wired
+already-built pieces into real observability surfaces rather than
+building new ones from zero.
+
+**Structured logging, opt-in.** A Monolog channel "tap"
+(`App\Logging\JsonFormatterTap`) swaps the log formatter to JSON,
+gated by a new `LOG_JSON` env var (`false` by default — local
+`tail -f` stays human-readable; a real deployment sets it `true` for
+log-aggregation tooling). Verified live: `LOG_JSON=true` produces one
+valid JSON object per line, including the `request_id` context
+`AssignRequestId` has shared since Milestone 4.
+
+**`/api/v1/health` now checks the queue, not just the database.**
+Zero new checker code — `QueueHealthChecker` already existed for the
+`SystemHealth` widget; `HealthController` now calls it too, and
+degrades (HTTP 503) on either a database failure or any failed queue
+job. Live verification against the real dev database caught 4 genuine,
+pre-existing failed jobs (dated a week before this milestone) — the
+check working correctly on real data, not a regression this milestone
+introduced.
+
+**Sentry: real, DSN-optional.** `sentry/sentry-laravel` (the official
+SDK), wired via `Sentry\Laravel\Integration::handles($exceptions)` in
+`bootstrap/app.php`'s existing `withExceptions()` closure — exactly
+the single choke point Milestone 4's ADR predicted. No custom
+filtering was needed to keep 4xx noise out: Laravel's own
+`Handler::$internalDontReport` already excludes every exception type
+`ApiExceptionHandler` special-cases into a clean 4xx response, so
+Sentry only ever sees genuinely unexpected 500s. `send_default_pii:
+false`, `traces_sample_rate: 0.0` — error monitoring only, not
+performance tracing/APM. No DSN is configured in this repo (empty by
+design, the same pattern Milestone 14 used for AI provider keys) —
+structurally verified (144/144 tests, a live request against a running
+server with the integration active), but confirming a real error
+arrives in a real Sentry project needs a DSN only the project owner
+can provide.
+
+**Request logging, not distributed tracing.** A new `LogApiRequests`
+middleware logs one line per API request (method/path/status/
+duration), correlated by the same shared `request_id` — a real,
+grep-able (or JSON-queryable) access log without a trace collector or
+any new infrastructure.
+
+**OpenTelemetry and frontend Sentry: named, deliberate scope cuts, not
+gaps.** No trace-collection backend exists in any environment this app
+runs in — implementing OTel instrumentation with nowhere to send spans
+would be observability theater. Frontend error monitoring stays
+out-of-scope for this milestone's "lightweight" brief; the frontend's
+existing `ApiError`/`UNAUTHORIZED_EVENT` pattern remains its primary
+error surface. See `docs/adr/0016-observability.md`.
+
 ## Known Limitations
 
 - `Card`, `Badge`, and other primitives expose more variants (e.g.
@@ -1209,10 +1272,27 @@ shows a specific, repeated, expensive read.
   design) — the same unbounded-query shape Posts had, but no measured
   problem at either's realistic scale today. Revisit if either grows
   the way Posts did.
+- No Sentry DSN is configured in this repo (Milestone 18, by design) —
+  the integration is code-complete and structurally verified, but
+  confirming a real error arrives in a real Sentry project needs a DSN
+  only the project owner can provide. See
+  `docs/adr/0016-observability.md`'s Sentry section.
+- No frontend error monitoring (Milestone 18, by design) — deliberately
+  out of this milestone's "lightweight" scope; the frontend's existing
+  `ApiError`/`UNAUTHORIZED_EVENT` pattern remains its primary error
+  surface. A real, separate future addition, not a silent gap.
+- No OpenTelemetry/distributed tracing (Milestone 18, by design) — no
+  trace-collection backend exists in any environment this app runs in;
+  instrumenting spans with nowhere to send them would be observability
+  theater. `.env.example`'s `OTEL_EXPORTER_OTLP_ENDPOINT` placeholder
+  stays commented, a named future option.
+- Structured JSON logging is opt-in via `LOG_JSON`, not the default
+  (Milestone 18, by design) — local development stays human-readable;
+  a real deployment would set it `true`.
 
 ## Status
 
-Milestone 17 (Performance & Scalability) complete. See `ROADMAP.md` for
+Milestone 18 (Observability) complete. See `ROADMAP.md` for
 the full milestone list, `DEVLOG.md` for a running log of completed
 work, and `docs/adr/` / `docs/ENGINEERING_JOURNAL.md` for architectural
 decisions and the reasoning behind them.
